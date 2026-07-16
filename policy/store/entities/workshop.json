@@ -1,0 +1,21 @@
+[
+  {
+    "uid": {
+      "type": "Linux::Service",
+      "id": "cedar-demo"
+    },
+    "attrs": {
+      "environment": "workshop",
+      "critical": false
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Linux::Host",
+      "id": "workshop-vm"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

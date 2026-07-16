@@ -1,0 +1,48 @@
+{
+  "view-logs": {
+    "action": "Linux::Action::\"ReadLogs\"",
+    "resource_type": "Linux::Service",
+    "resource_id": "cedar-demo",
+    "resource_attributes": {
+      "environment": "workshop",
+      "critical": false
+    },
+    "argv": [
+      "/usr/bin/journalctl",
+      "-u",
+      "cedar-demo",
+      "-n",
+      "20",
+      "--no-pager"
+    ]
+  },
+  "status-demo": {
+    "action": "Linux::Action::\"ViewStatus\"",
+    "resource_type": "Linux::Service",
+    "resource_id": "cedar-demo",
+    "resource_attributes": {
+      "environment": "workshop",
+      "critical": false
+    },
+    "argv": [
+      "/usr/bin/systemctl",
+      "status",
+      "cedar-demo",
+      "--no-pager"
+    ]
+  },
+  "restart-demo": {
+    "action": "Linux::Action::\"Restart\"",
+    "resource_type": "Linux::Service",
+    "resource_id": "cedar-demo",
+    "resource_attributes": {
+      "environment": "workshop",
+      "critical": false
+    },
+    "argv": [
+      "/usr/bin/systemctl",
+      "restart",
+      "cedar-demo"
+    ]
+  }
+}

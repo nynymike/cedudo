@@ -1,0 +1,28 @@
+{
+  "principal": {
+    "cedar_entity_mapping": {
+      "entity_type": "Linux::User",
+      "id": "alice"
+    },
+    "uid": 1000,
+    "gid": 1000,
+    "groups": ["developers"],
+    "home": "/home/alice",
+    "shell": "/bin/bash"
+  },
+  "action": "Linux::Action::\"ReadLogs\"",
+  "resource": {
+    "cedar_entity_mapping": {
+      "entity_type": "Linux::Service",
+      "id": "cedar-demo"
+    },
+    "environment": "workshop",
+    "critical": false
+  },
+  "context": {
+    "local_console": true,
+    "interactive": true,
+    "current_time": 1700000000,
+    "hostname": "workshop-vm"
+  }
+}

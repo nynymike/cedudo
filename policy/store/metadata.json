@@ -1,0 +1,12 @@
+{
+  "policy_engine": "cedar",
+  "policy_engine_version": "4.4.0",
+  "policy_store": {
+    "id": "a1b2c3d4e5f6789012345678",
+    "name": "cedudo-workshop",
+    "description": "Starter policies for Build a Safer sudo with Cedar",
+    "version": "1.0.0",
+    "created_date": "2026-07-16T00:00:00Z",
+    "updated_date": "2026-07-16T00:00:00Z"
+  }
+}

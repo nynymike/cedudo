@@ -1,0 +1,26 @@
+{
+  "principal": {
+    "cedar_entity_mapping": {
+      "entity_type": "Linux::User",
+      "id": "bob"
+    },
+    "uid": 1001,
+    "gid": 1001,
+    "groups": ["operators"],
+    "home": "/home/bob",
+    "shell": "/bin/bash"
+  },
+  "action": "Linux::Action::\"OpenShell\"",
+  "resource": {
+    "cedar_entity_mapping": {
+      "entity_type": "Linux::Host",
+      "id": "workshop-vm"
+    }
+  },
+  "context": {
+    "local_console": true,
+    "interactive": true,
+    "current_time": 1700000000,
+    "hostname": "workshop-vm"
+  }
+}
