@@ -125,7 +125,7 @@ one, only on this host, with these arguments…”. The workshop shows a cleaner
                      /             \
                     v               v
 Browser + Tarp                  Local VM
-Cedarling WASM                  @cedudo.py restart-demo
+Cedarling WASM                  cedudo restart-demo
 Policy testing                         |
                                        v
                                Cedarling Python
@@ -148,16 +148,16 @@ Still as **alice**, run:
 ```bash
 id
 systemctl status cedar-demo --no-pager
-@cedudo.py view-logs
-@cedudo.py restart-demo
+cedudo view-logs
+cedudo restart-demo
 ```
 
 Expected with the starter policies:
 
 | Command | Result |
 |---------|--------|
-| `@cedudo.py view-logs` | **PERMIT** — alice is in `developers` |
-| `@cedudo.py restart-demo` | **DENY** — alice is not in `operators` |
+| `cedudo view-logs` | **PERMIT** — alice is in `developers` |
+| `cedudo restart-demo` | **DENY** — alice is not in `operators` |
 
 Confirm that direct admin commands cannot be run:
 
@@ -165,14 +165,14 @@ Confirm that direct admin commands cannot be run:
 systemctl restart cedar-demo
 ```
 
-That should be **denied** because you don't have root privileges. Only `@cedudo.py` can elevate via setuid.
+That should be **denied** because you don't have root privileges. Only `cedudo` can elevate via setuid.
 
 If the facilitator asks you to try **bob** (local console session):
 
 ```bash
 su - bob
 # or: ssh bob@localhost   (then local_console may be false — see later)
-@cedudo.py restart-demo
+cedudo restart-demo
 ```
 
 As bob on a **local** console, restart should **PERMIT**. Switch back to alice
@@ -264,12 +264,12 @@ sudo ./tools/deploy-policy.sh
 That validates `policy/cedudo.cjar`, copies it to `/opt/cedudo/cedudo.cjar`, and
 sets root ownership with mode `0644`.
 
-Note: The deploy script still uses `sudo` for administrative tasks like copying files to `/opt/cedudo/`. The `@cedudo.py` replacement only applies to the privilege wrapper itself.
+Note: The deploy script still uses `sudo` for administrative tasks like copying files to `/opt/cedudo/`. The `cedudo` replacement only applies to the privilege wrapper itself.
 
 As **alice** on a local console:
 
 ```bash
-@cedudo.py restart-demo
+cedudo restart-demo
 systemctl status cedar-demo --no-pager
 ```
 
@@ -284,10 +284,10 @@ controls a real privileged operation.
 Try to break out. Every attempt below should **fail**:
 
 ```bash
-@cedudo.py ../../bin/bash
-@cedudo.py "restart-demo; /bin/bash"
-@cedudo.py restart-demo --service ssh
-@cedudo.py root-shell
+cedudo ../../bin/bash
+cedudo "restart-demo; /bin/bash"
+cedudo restart-demo --service ssh
+cedudo root-shell
 systemctl restart cedar-demo
 ```
 

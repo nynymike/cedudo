@@ -57,7 +57,7 @@ sudo ln -sf /opt/cedudo/cedudo.py /usr/local/bin/cedudo
 After this, users can run:
 
 ```bash
-@cedudo.py view-logs
+cedudo view-logs
 # or
 cedudo view-logs  # if symlink was created
 ```
@@ -87,7 +87,7 @@ The script validates these requirements at runtime and refuses to execute if the
 
 `cedudo` uses the setuid mechanism for privilege elevation:
 
-- **Direct invocation**: Users run `@cedudo.py` directly (no sudo wrapper)
+- **Direct invocation**: Users run `cedudo` directly (no sudo wrapper)
 - **Cedar-based access control**: All authorization decisions come from Cedar policies
 - **Simple privilege model**: One setuid executable that handles elevation and enforcement
 - **Fail-safe design**: Authorization, manifest validation, and secure command execution
@@ -115,7 +115,7 @@ ls -l /opt/cedudo/
 # -rw-r--r-- root root cedudo.cjar
 
 # Test as a regular user
-@cedudo.py view-logs
+cedudo view-logs
 ```
 
 ## Troubleshooting

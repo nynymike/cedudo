@@ -2,8 +2,8 @@
 """Workshop Cedar-authorized privilege wrapper (Policy Enforcement Point).
 
 Usage:
-    @cedudo.py view-logs
-    @cedudo.py restart-demo
+    cedudo view-logs
+    cedudo restart-demo
 
 The caller supplies only an operation ID. The command and every argument come
 from a root-owned manifest at /opt/cedudo/operations.json. Authorization is
@@ -368,7 +368,7 @@ def safe_environment() -> dict[str, str]:
 def parse_operation() -> str:
     """Accept only the first positional operation ID; ignore trailing args."""
     if len(sys.argv) < 2:
-        fail("usage: @cedudo.py <operation-id>", EX_USAGE)
+        fail("usage: cedudo <operation-id>", EX_USAGE)
 
     operation = sys.argv[1]
     # Trailing arguments (e.g. --service ssh) are ignored by design so
