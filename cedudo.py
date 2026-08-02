@@ -2,13 +2,15 @@
 """Workshop Cedar-authorized privilege wrapper (Policy Enforcement Point).
 
 Usage:
-    sudo /usr/local/sbin/cedudo view-logs
-    sudo /usr/local/sbin/cedudo restart-demo
+    @cedudo.py view-logs
+    @cedudo.py restart-demo
 
 The caller supplies only an operation ID. The command and every argument come
 from a root-owned manifest at /opt/cedudo/operations.json. Authorization is
 evaluated by Cedarling against the AuthZEN Constraint JAR (.cjar) at
 /opt/cedudo/cedudo.cjar.
+
+This tool must be installed as a setuid-root executable to function properly.
 
 Any Cedarling or configuration error fails closed (no privileged exec).
 
@@ -110,29 +112,28 @@ def require_trusted_file(path: Path, label: str) -> None:
 
 
 def invoking_user() -> tuple[pwd.struct_passwd, list[str]]:
-    """Resolve the original user from sudo-controlled environment variables."""
+    """Resolve the original user from real UID/GID (setuid execution)."""
     if os.geteuid() != 0:
-        fail("must be invoked through sudo")
+        fail("must be installed as setuid root")
 
-    name = os.environ.get("SUDO_USER")
-    uid_text = os.environ.get("SUDO_UID")
-    gid_text = os.environ.get("SUDO_GID")
+    # Get the real user ID (the user who invoked cedudo)
+    uid = os.getuid()
+    gid = os.getgid()
 
-    if not name or not uid_text or not gid_text:
-        fail("missing SUDO_USER, SUDO_UID, or SUDO_GID")
-
-    try:
-        uid = int(uid_text)
-        gid = int(gid_text)
-        account = pwd.getpwnam(name)
-    except (ValueError, KeyError):
-        fail("invalid sudo identity")
-
-    if uid == 0 or name == "root":
+    if uid == 0:
         fail("direct root invocation is not a workshop principal")
 
+    try:
+        account = pwd.getpwuid(uid)
+    except KeyError:
+        fail("invoking user not found in account database")
+
     if account.pw_uid != uid or account.pw_gid != gid:
-        fail("sudo identity does not match the local account database")
+        fail("identity does not match the local account database")
+
+    name = account.pw_name
+    if name == "root":
+        fail("direct root invocation is not a workshop principal")
 
     try:
         group_ids = os.getgrouplist(account.pw_name, account.pw_gid)
@@ -367,7 +368,7 @@ def safe_environment() -> dict[str, str]:
 def parse_operation() -> str:
     """Accept only the first positional operation ID; ignore trailing args."""
     if len(sys.argv) < 2:
-        fail("usage: cedudo <operation-id>", EX_USAGE)
+        fail("usage: @cedudo.py <operation-id>", EX_USAGE)
 
     operation = sys.argv[1]
     # Trailing arguments (e.g. --service ssh) are ignored by design so

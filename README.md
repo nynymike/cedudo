@@ -1,11 +1,13 @@
-# Build a Safer `sudo` with Cedar
+# Build a Safer Privilege System with Cedar
 
 An 80-minute hands-on workshop. You will authorize privileged Linux operations
 with [Cedar](https://www.cedarpolicy.com/) policies, test them in the browser
-with Tarp, then enforce the same policies on a Linux VM through a small helper
-called `cedudo`.
+with Tarp, then enforce the same policies on a Linux VM through a Cedar-authorized
+privilege wrapper called `cedudo`.
 
-**This is educational, not a production sudo replacement.**
+`cedudo` is a setuid-root executable that uses Cedar policies for authorization.
+
+**This is educational software for learning Cedar authorization. Not for production use.**
 
 By the end you will:
 
@@ -46,13 +48,12 @@ the facilitators describe for your event (often inside the VM).
 
 ### 3. Skim the mental model (5 minutes)
 
-You will **not** replace `sudo`. Three jobs stay separate:
+Two components work together:
 
 | Piece | Job |
 |-------|-----|
-| **sudo** | Privilege transition only (your user → root) |
-| **cedudo** | Enforcement: accept an operation ID, ask Cedar, run a **fixed** command |
-| **Cedarling** | Decision: evaluate Cedar policies and return permit or deny |
+| **cedudo (setuid)** | Policy Enforcement Point: accept an operation ID, ask Cedar, run a **fixed** command with elevated privileges |
+| **Cedarling** | Policy Decision Point: evaluate Cedar policies and return permit or deny |
 
 Tarp is the browser workbench. Both Tarp and `cedudo` load the **same** policy
 store file: `cedudo.cjar` (an AuthZEN Constraint JAR—a ZIP of policies, schema,
@@ -118,14 +119,13 @@ sudo /opt/cedudo/reset-workshop
 
 Ordinary `sudoers` rules grow into “alice may run this command, bob may run that
 one, only on this host, with these arguments…”. The workshop shows a cleaner
-split:
 
 ```text
                     Same cedudo.cjar
                      /             \
                     v               v
 Browser + Tarp                  Local VM
-Cedarling WASM                  sudo cedudo restart-demo
+Cedarling WASM                  @cedudo.py restart-demo
 Policy testing                         |
                                        v
                                Cedarling Python
@@ -148,31 +148,31 @@ Still as **alice**, run:
 ```bash
 id
 systemctl status cedar-demo --no-pager
-sudo cedudo view-logs
-sudo cedudo restart-demo
+@cedudo.py view-logs
+@cedudo.py restart-demo
 ```
 
 Expected with the starter policies:
 
 | Command | Result |
 |---------|--------|
-| `sudo cedudo view-logs` | **PERMIT** — alice is in `developers` |
-| `sudo cedudo restart-demo` | **DENY** — alice is not in `operators` |
+| `@cedudo.py view-logs` | **PERMIT** — alice is in `developers` |
+| `@cedudo.py restart-demo` | **DENY** — alice is not in `operators` |
 
-Confirm that direct admin commands are not in sudoers:
+Confirm that direct admin commands cannot be run:
 
 ```bash
-sudo systemctl restart cedar-demo
+systemctl restart cedar-demo
 ```
 
-That should be **denied by sudoers**. Only `/usr/local/sbin/cedudo` is allowed.
+That should be **denied** because you don't have root privileges. Only `@cedudo.py` can elevate via setuid.
 
 If the facilitator asks you to try **bob** (local console session):
 
 ```bash
 su - bob
 # or: ssh bob@localhost   (then local_console may be false — see later)
-sudo cedudo restart-demo
+@cedudo.py restart-demo
 ```
 
 As bob on a **local** console, restart should **PERMIT**. Switch back to alice
@@ -255,7 +255,7 @@ It should now **PERMIT**.
 
 ### Minutes 45–58 — Deploy the same policy to the VM
 
-When Tarp looks right, install the archive for enforcement:
+When Tarp looks right, install the archive for enforcement (requires root privileges):
 
 ```bash
 sudo ./tools/deploy-policy.sh
@@ -264,10 +264,12 @@ sudo ./tools/deploy-policy.sh
 That validates `policy/cedudo.cjar`, copies it to `/opt/cedudo/cedudo.cjar`, and
 sets root ownership with mode `0644`.
 
+Note: The deploy script still uses `sudo` for administrative tasks like copying files to `/opt/cedudo/`. The `@cedudo.py` replacement only applies to the privilege wrapper itself.
+
 As **alice** on a local console:
 
 ```bash
-sudo cedudo restart-demo
+@cedudo.py restart-demo
 systemctl status cedar-demo --no-pager
 ```
 
@@ -282,11 +284,11 @@ controls a real privileged operation.
 Try to break out. Every attempt below should **fail**:
 
 ```bash
-sudo cedudo ../../bin/bash
-sudo cedudo "restart-demo; /bin/bash"
-sudo cedudo restart-demo --service ssh
-sudo cedudo root-shell
-sudo systemctl restart cedar-demo
+@cedudo.py ../../bin/bash
+@cedudo.py "restart-demo; /bin/bash"
+@cedudo.py restart-demo --service ssh
+@cedudo.py root-shell
+systemctl restart cedar-demo
 ```
 
 Why they fail:
@@ -295,8 +297,8 @@ Why they fail:
 - Trailing arguments (like `--service ssh`) are ignored; argv comes from the
   root-owned manifest
 - `root-shell` is not in `operations.json` (rejected before Cedar runs)
-- sudoers does not allow `systemctl` directly—only `cedudo`
-- You cannot rewrite `/opt/cedudo/operations.json` or `cedudo.cjar` without sudo
+- `systemctl` runs without root privileges since cedudo is the only setuid executable
+- You cannot rewrite `/opt/cedudo/operations.json` or `cedudo.cjar` without root access
 
 A Cedar **permit** never lets the caller change which binary runs.
 
@@ -342,7 +344,7 @@ Rebuild and redeploy the same way as before:
 ```bash
 ./tools/build-cjar.sh
 # retest in Tarp
-sudo ./tools/deploy-policy.sh
+sudo ./tools/deploy-policy.sh  # Still needs sudo for copying to /opt/cedudo/
 ```
 
 ---
@@ -357,8 +359,7 @@ Privileged capability → Action
 Service / host        → Resource
 Session conditions    → Context
 Cedarling             → Decision
-cedudo                → Enforcement
-sudo                  → Privilege transition
+cedudo (setuid)       → Enforcement + Privilege transition
 ```
 
 What this workshop deliberately left out (and what production would need):
@@ -384,9 +385,9 @@ privilege path.
 | `Cedarling initialization failed` | `/opt/cedudo/cedudo.cjar` exists, owned by root, not group/world writable |
 | `unknown operation` | Only IDs in `operations.json` are valid (`view-logs`, `status-demo`, `restart-demo`) |
 | `operation must match [a-z]…` | Operation IDs are kebab-case only—no paths or shell metacharacters |
-| `must be invoked through sudo` | Run `sudo cedudo …` as alice/bob, not a root login shell |
-| sudo asks for a password / denies | You must be in `developers` or `operators`; sudoers only allows `cedudo` |
-| Policies changed but VM behavior did not | Rebuild with `./tools/build-cjar.sh`, then `sudo ./tools/deploy-policy.sh` |
+| `must be installed as setuid root` | `cedudo.py` must have the setuid bit set and be owned by root |
+| Permission denied when running cedudo | The file must be executable and have setuid bit: `chmod 4755 /path/to/cedudo.py` |
+| Policies changed but VM behavior did not | Rebuild with `./tools/build-cjar.sh`, then deploy with root privileges |
 
 Reset the VM to the starter state:
 
