@@ -14,8 +14,8 @@ This tool must be installed as a setuid-root executable to function properly.
 
 Any Cedarling or configuration error fails closed (no privileged exec).
 
-This is educational software for the "Build a Safer sudo with Cedar" workshop.
-It is not a production sudo replacement.
+This is educational software for learning Cedar authorization with privileged operations.
+It is not a production privilege management system.
 """
 
 from __future__ import annotations
