@@ -2,6 +2,18 @@
 
 This document describes how to install `cedudo` as a setuid-root executable.
 
+## Quick Fix: "must be installed as setuid root" Error
+
+If you're seeing this error, the setuid bit is not set. Run:
+
+```bash
+sudo chown root:root /opt/cedudo/cedudo.py
+sudo chmod 4755 /opt/cedudo/cedudo.py
+ls -l /opt/cedudo/cedudo.py  # Should show: -rwsr-xr-x (note the 's')
+```
+
+For full installation instructions, continue reading below.
+
 ## Prerequisites
 
 - Python 3.8 or later
@@ -110,23 +122,50 @@ After installation, verify the setup:
 ls -l /opt/cedudo/
 
 # Should show:
-# -rwsr-xr-x root root cedudo.py
+# -rwsr-xr-x root root cedudo.py    ← Note the 's' in 'rws' (setuid bit)
 # -rw-r--r-- root root operations.json
 # -rw-r--r-- root root cedudo.cjar
 
-# Test as a regular user
+# Verify the setuid bit is set (should output '4755')
+stat -c '%a' /opt/cedudo/cedudo.py
+
+# Verify ownership is root (should output '0')
+stat -c '%u' /opt/cedudo/cedudo.py
+
+# Test as a regular user (switch to alice or another non-root user)
 cedudo view-logs
 ```
+
+**What to look for:**
+- The **`s`** in `-rwsr-xr-x` means the setuid bit is set
+- Permissions `4755` where the `4` prefix indicates setuid
+- Owner must be `root` (UID 0)
+- If you see `-rwxr-xr-x` instead of `-rwsr-xr-x`, the setuid bit is missing
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| `must be installed as setuid root` | Run `sudo chmod 4755 /opt/cedudo/cedudo.py` |
+| `must be installed as setuid root` | The setuid bit is missing. Run: `sudo chown root:root /opt/cedudo/cedudo.py && sudo chmod 4755 /opt/cedudo/cedudo.py` |
 | `cannot inspect policy store` | Verify files are owned by root and in `/opt/cedudo/` |
 | `Cedarling initialization failed` | Check that `cedudo.cjar` exists and is valid |
 | `invoking user not found` | Ensure your user account exists in `/etc/passwd` |
 | Permission denied | The script must be executable with setuid bit set |
+| Script works for root but not regular users | Check that the setuid bit is set with `ls -l /opt/cedudo/cedudo.py` (should show `s` in permissions) |
+
+### Common Cause: Setuid Bit Lost
+
+The setuid bit can be lost when:
+- Copying files without preserving permissions (`cp` without `-p`)
+- Extracting from archives that don't preserve special bits
+- Editing the file with some editors
+- File system mounted with `nosuid` option
+
+**Always re-run the permission commands after copying or modifying the file:**
+```bash
+sudo chown root:root /opt/cedudo/cedudo.py
+sudo chmod 4755 /opt/cedudo/cedudo.py
+```
 
 ## Uninstallation
 
