@@ -38,7 +38,7 @@ VM already has:
 - Tarp (browser extension / package)
 - Cedarling Python bindings
 - The `cedar-demo` systemd service
-- `cedudo` installed under `/opt/cedudo/`
+- `cedudo` installed under `/opt/cedudo/` (includes the C wrapper for setuid support)
 - Workshop files under `~/cedudo-workshop/` (or this repository checked out there)
 
 ### 2. Install a desktop browser (on the VM or host, as instructed)
@@ -385,8 +385,8 @@ privilege path.
 | `Cedarling initialization failed` | `/opt/cedudo/cedudo.cjar` exists, owned by root, not group/world writable |
 | `unknown operation` | Only IDs in `operations.json` are valid (`view-logs`, `status-demo`, `restart-demo`) |
 | `operation must match [a-z]…` | Operation IDs are kebab-case only—no paths or shell metacharacters |
-| `must be installed as setuid root` | `cedudo.py` must have the setuid bit set and be owned by root |
-| Permission denied when running cedudo | The file must be executable and have setuid bit: `chmod 4755 /path/to/cedudo.py` |
+| `must be installed as setuid root` | The C wrapper `/opt/cedudo/cedudo` must have setuid bit. Run: `sudo chmod 4755 /opt/cedudo/cedudo` |
+| Permission denied when running cedudo | The wrapper binary must be executable and have setuid bit. See INSTALL.md for C wrapper setup |
 | Policies changed but VM behavior did not | Rebuild with `./tools/build-cjar.sh`, then deploy with root privileges |
 
 Reset the VM to the starter state:
@@ -402,7 +402,9 @@ sudo /opt/cedudo/reset-workshop
 Repository layout if you want to explore later:
 
 ```text
-cedudo.py                 Enforcement helper
+cedudo.py                 Python enforcement script
+cedudo-wrapper.c          C wrapper for setuid support
+install-wrapper.sh        Script to build and install the wrapper
 operations.json           Operation ID → fixed argv
 policy/store/             AuthZEN policy store (edit here)
 policy/cedudo.cjar        Packaged store (ZIP)

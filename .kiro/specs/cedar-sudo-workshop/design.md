@@ -1,25 +1,24 @@
-# Design Document: Cedar Sudo Workshop
+# Design Document: Cedar Privilege Authorization Workshop
 
 ## Overview
 
-The Cedar Sudo Workshop is an 80-minute hands-on educational experience teaching attendees how to use Cedar authorization policies to control privileged Linux operations. The system demonstrates a critical security architecture pattern: the separation of **policy decision**, **policy enforcement**, and **privilege escalation**.
+The Cedar Privilege Authorization Workshop is an 80-minute hands-on educational experience teaching attendees how to use Cedar authorization policies to control privileged Linux operations. The system demonstrates a critical security architecture pattern: the separation of **policy decision** and **policy enforcement**.
 
 ### Core Concept
 
-Rather than replacing `sudo` itself, this workshop builds a layered authorization architecture where:
+This workshop builds a Cedar-based authorization architecture where:
 
-1. **sudo** performs the Unix privilege transition (user → root)
-2. **cedudo** (Policy Enforcement Point) validates operations and enforces authorization decisions
-3. **Cedarling** (Policy Decision Point) evaluates Cedar policies and returns permit/deny decisions
-4. **Tarp** (browser-based policy workbench) allows testing policies before deployment
-5. A shared **`.cjar` policy store** is consumed by both Tarp and cedudo
+1. **cedudo** (setuid-root executable) performs privilege transition and policy enforcement
+2. **Cedarling** (Policy Decision Point) evaluates Cedar policies and returns permit/deny decisions
+3. **Tarp** (browser-based policy workbench) allows testing policies before deployment
+4. A shared **`.cjar` policy store** is consumed by both Tarp and cedudo
 
 This separation ensures that authorization logic is decoupled from privilege mechanics, making policies testable, auditable, and maintainable independently of the enforcement infrastructure.
 
 ### Educational Scope
 
 This is explicitly an **educational implementation, not production-ready**. Production use would require:
-- Compiled root-owned enforcement binary (not Python script)
+- Compiled root-owned enforcement binary (not Python script) - this workshop uses a minimal C wrapper to enable setuid on the Python script
 - Signed and versioned policy stores with rollback protection
 - JWT-based workload authentication instead of application-asserted identity
 - Formal security review of all operation-to-command bindings
@@ -49,8 +48,7 @@ graph TB
     PolicyStore[cedudo.cjar Policy Store]
     Alice[alice user - developers group]
     Bob[bob user - operators group]
-    Sudo[sudo - privilege escalation]
-    Cedudo[cedudo.py - enforcement point]
+    Cedudo[cedudo.py - setuid enforcement point]
     Cedarling[Cedarling Python - decision point]
     OpManifest[operations.json - command manifest]
     DemoService[cedar-demo.service]
@@ -61,11 +59,11 @@ graph TB
     Tarp -->|loads .cjar via URL| PolicyServer
     Tarp -->|evaluates unsigned requests| Cedarling
     
-    Alice -->|sudo cedudo view-logs| Sudo
-    Bob -->|sudo cedudo restart-demo| Sudo
-    Sudo -->|privilege transition to root| Cedudo
+    Alice -->|cedudo view-logs| Cedudo
+    Bob -->|cedudo restart-demo| Cedudo
+    Cedudo -->|setuid elevation to root| Cedudo
     Cedudo -->|reads operation| OpManifest
-    Cedudo -->|derives principal| Alice
+    Cedudo -->|derives principal from real UID| Alice
     Cedudo -->|authorize_unsigned| Cedarling
     Cedarling -->|loads policy store| PolicyStore
     Cedarling -->|returns permit/deny| Cedudo
@@ -76,8 +74,7 @@ graph TB
 
 | Component | Responsibility | Trust Boundary |
 |-----------|---------------|----------------|
-| **sudo** | Privilege transition from user to root | Linux kernel enforced |
-| **cedudo.py** | Policy Enforcement Point - validates operations, constructs PARC request, enforces decision | Root-owned, runs as root |
+| **cedudo (C wrapper + Python)** | Policy Enforcement Point - privilege transition via setuid wrapper, validates operations, constructs PARC request, enforces decision | Setuid-root compiled wrapper, kernel enforced |
 | **Cedarling** | Policy Decision Point - evaluates Cedar policies against request | Embedded library in cedudo |
 | **operations.json** | Operation manifest - binds operation IDs to fixed command arrays | Root-owned, immutable |
 | **cedudo.cjar** | Policy store - contains Cedar policies, schema, entities | Root-owned, deployed atomically |
@@ -99,15 +96,14 @@ sequenceDiagram
     participant PolicyStore as cedudo.cjar
     participant SystemCmd as systemctl
 
-    User->>Sudo: sudo cedudo restart-demo
-    Sudo->>Sudo: Validate sudoers rules
-    Sudo->>Cedudo: Execute as root with SUDO_USER=alice
-    
+    User->>Cedudo: cedudo restart-demo (setuid elevation)
+    Cedudo->>Cedudo: Validate effective UID is 0
     Cedudo->>Cedudo: Validate operation ID format
     Cedudo->>OpManifest: Load operation "restart-demo"
     OpManifest-->>Cedudo: action, resource, argv, attributes
     
-    Cedudo->>Cedudo: Read SUDO_USER, SUDO_UID, SUDO_GID
+    Cedudo->>Cedudo: Read real UID/GID (os.getuid/getgid)
+    Cedudo->>Cedudo: Lookup user from real UID
     Cedudo->>Cedudo: Query groups from /etc/group
     Cedudo->>Cedudo: Build Principal (alice, uid, groups)
     
@@ -140,10 +136,11 @@ sequenceDiagram
 
 The architecture establishes several critical trust boundaries:
 
-1. **Kernel Trust Boundary**: Only `sudo` can perform privilege escalation. The sudoers configuration permits only `/usr/local/sbin/cedudo`, not the underlying administrative commands.
+1. **Kernel Trust Boundary**: Only the setuid mechanism can perform privilege escalation. The kernel enforces that the compiled `/opt/cedudo/cedudo` wrapper runs with root privileges while preserving the real UID for identity tracking. Modern Linux kernels ignore setuid bits on interpreted scripts, so a C wrapper is required.
 
 2. **Root Ownership Boundary**: All enforcement-critical files are root-owned with restrictive permissions:
-   - `/opt/cedudo/cedudo.py` (0755 root:root) - enforcement logic
+   - `/opt/cedudo/cedudo` (4755 root:root) - setuid C wrapper binary
+   - `/opt/cedudo/cedudo.py` (0644 root:root) - Python enforcement script
    - `/opt/cedudo/operations.json` (0644 root:root) - command manifest
    - `/opt/cedudo/cedudo.cjar` (0644 root:root) - policy store
 
@@ -167,26 +164,27 @@ This layered defense ensures that:
 
 **Purpose**: Root-owned Python script that validates operations, constructs Cedar authorization requests from trusted sources, enforces decisions, and executes fixed privileged commands.
 
+**Note**: This Python script cannot directly use setuid on modern Linux systems. It is executed through a C wrapper (see next section).
+
 **Interface**:
 ```bash
-/usr/local/sbin/cedudo <operation-id>
+cedudo <operation-id>
 ```
 
 **Input Validation**:
 - Operation ID must match regex: `^[a-z][a-z0-9-]{0,63}$`
 - No additional arguments accepted
-- Validates SUDO_USER, SUDO_UID, SUDO_GID are present
-- Validates effective UID is 0 (root)
+- Validates effective UID is 0 (root) - setuid bit must be set
+- Validates real UID is not 0 (not direct root execution)
 
 **Principal Construction**:
 ```python
-# Derive from trusted OS sources
-username = os.environ["SUDO_USER"]
-uid = int(os.environ["SUDO_UID"])
-gid = int(os.environ["SUDO_GID"])
+# Derive from trusted OS sources (setuid preserves real UID)
+uid = os.getuid()  # Real UID of invoking user
+gid = os.getgid()  # Real GID of invoking user
 
 # Validate against system database
-account = pwd.getpwnam(username)
+account = pwd.getpwuid(uid)
 assert account.pw_uid == uid and account.pw_gid == gid
 
 # Query real group memberships
@@ -276,11 +274,67 @@ os.execve(argv[0], argv, safe_env)
 **Fail-Closed Behavior**:
 - Any error during initialization → exit without execution
 - Unknown operation ID → exit without execution
-- Invalid SUDO_* variables → exit without execution
+- Cannot resolve user from real UID → exit without execution
 - Cannot resolve user/groups → exit without execution
 - Cedarling initialization failure → exit without execution
 - Authorization evaluation exception → exit without execution
 - Authorization deny → exit without execution
+
+
+### cedudo (C Wrapper) - Setuid Enabler
+
+**Purpose**: Compiled binary that enables setuid functionality for the Python enforcement script.
+
+**Why Needed**: Modern Linux kernels ignore the setuid bit on interpreted scripts (files with `#!/usr/bin/python3` shebangs) for security reasons. A compiled binary is required to use setuid.
+
+**Implementation** (cedudo-wrapper.c):
+```c
+#include <unistd.h>
+#include <stdio.h>
+
+#define PYTHON_PATH "/opt/cedudo/venv/bin/python3"
+#define SCRIPT_PATH "/opt/cedudo/cedudo.py"
+
+int main(int argc, char *argv[]) {
+    char *python_args[argc + 2];
+    
+    python_args[0] = PYTHON_PATH;
+    python_args[1] = SCRIPT_PATH;
+    
+    for (int i = 1; i < argc; i++) {
+        python_args[i + 1] = argv[i];
+    }
+    
+    python_args[argc + 1] = NULL;
+    
+    execv(python_args[0], python_args);
+    perror("cedudo-wrapper: execv failed");
+    return 1;
+}
+```
+
+**Build and Installation**:
+```bash
+gcc -o cedudo-wrapper cedudo-wrapper.c
+sudo cp cedudo-wrapper /opt/cedudo/cedudo
+sudo chown root:root /opt/cedudo/cedudo
+sudo chmod 4755 /opt/cedudo/cedudo
+sudo ln -sf /opt/cedudo/cedudo /usr/local/bin/cedudo
+```
+
+Or use the provided installation script:
+```bash
+./install-wrapper.sh
+```
+
+**Security Properties**:
+- Compiled binary CAN use setuid (kernel allows it)
+- Executes Python interpreter with elevated privileges
+- Python script inherits root effective UID
+- Real UID remains the invoking user's UID
+- Wrapper has minimal attack surface (30 lines of C)
+- No dynamic library dependencies beyond libc
+- Fixed paths prevent path injection
 
 
 ### operations.json - Command Manifest
@@ -586,18 +640,18 @@ Represents the authenticated entity making the authorization request:
 {
   "cedar_entity_mapping": {
     "entity_type": "Linux::User",
-    "id": "alice"  # Derived from SUDO_USER
+    "id": "alice"  # Derived from real UID lookup
   },
-  "uid": 1000,     # Derived from SUDO_UID
-  "gid": 1000,     # Derived from SUDO_GID
+  "uid": 1000,     # Derived from os.getuid() (real UID)
+  "gid": 1000,     # Derived from os.getgid() (real GID)
   "groups": ["developers"],  # Queried from os.getgrouplist()
-  "home": "/home/alice",     # From pwd.getpwnam()
-  "shell": "/bin/bash"       # From pwd.getpwnam()
+  "home": "/home/alice",     # From pwd.getpwuid()
+  "shell": "/bin/bash"       # From pwd.getpwuid()
 }
 ```
 
 **Derivation**:
-- Identity comes from sudo-preserved environment variables
+- Identity comes from real UID/GID (preserved by setuid mechanism)
 - Group memberships queried from system databases
 - Cannot be supplied by user via command-line arguments
 - Validated against system user database
@@ -694,17 +748,14 @@ unless {
 
 ```
 /opt/cedudo/                           # Root-owned enforcement directory
-├── cedudo.py          (0755 root:root)  # Enforcement script
+├── cedudo             (4755 root:root)  # Setuid C wrapper binary
+├── cedudo.py          (0644 root:root)  # Python enforcement script
 ├── operations.json    (0644 root:root)  # Command manifest
 ├── cedudo.cjar        (0644 root:root)  # Policy store
 └── venv/                                # Python virtual environment
     └── bin/python3                      # With cedarling-python
 
-/usr/local/sbin/cedudo                 # Symlink to /opt/cedudo/cedudo.py
-
-/etc/sudoers.d/cedudo  (0440 root:root)
-    %developers ALL=(root) /usr/local/sbin/cedudo *
-    %operators  ALL=(root) /usr/local/sbin/cedudo *
+/usr/local/bin/cedudo                  # Symlink to /opt/cedudo/cedudo
 
 ~/cedudo-workshop/                     # User-owned workshop directory
 ├── policy/
@@ -719,6 +770,8 @@ unless {
 │   ├── build-cjar.sh                  # Compile policies to .cjar
 │   ├── serve-policy.py                # Local HTTP server for Tarp
 │   └── deploy-policy.sh               # Deploy to /opt/cedudo/
+├── cedudo-wrapper.c                   # C wrapper source
+├── install-wrapper.sh                 # Build and install wrapper
 └── README.md                          # Workshop documentation
 ```
 
@@ -739,8 +792,8 @@ cedudo[12345]: WARNING DENY user=alice uid=1000 operation=restart-demo action=Li
 - syslog (/dev/log): When available (system audit trail)
 
 **Audit Fields**:
-- user: Original username from SUDO_USER
-- uid: Original user ID from SUDO_UID
+- user: Original username from real UID lookup
+- uid: Original user ID from os.getuid()
 - operation: Operation ID from command line
 - action: Cedar action from operations.json
 - resource: Cedar resource type::id

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document specifies the requirements for a self-contained 80-minute hands-on workshop titled "Build a Safer sudo with Cedar" for the Texas Linux Festival. The workshop teaches attendees how to use Cedar authorization policies to control privileged Linux operations through a demonstration system that separates policy decision (Cedar/Cedarling), enforcement (cedudo helper), and privilege escalation (sudo). The workshop is educational and explicitly not production-ready.
+This document specifies the requirements for a self-contained 80-minute hands-on workshop titled "Build a Safer Privilege System with Cedar" for the Texas Linux Festival. The workshop teaches attendees how to use Cedar authorization policies to control privileged Linux operations through a demonstration system that separates policy decision (Cedar/Cedarling) from enforcement (cedudo setuid executable). The workshop is educational and explicitly not production-ready.
 
 ## Glossary
 
@@ -37,9 +37,9 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 2. THE Workshop_VM SHALL contain two demonstration user accounts: alice (member of developers group) and bob (member of operators group)
 3. THE Workshop_VM SHALL have Demo_Service running as a systemd service that writes timestamps to its journal and can be safely restarted repeatedly
 4. THE Workshop_VM SHALL have Workshop_Files directory at ~/cedudo-workshop/ containing policy/, examples/, tools/, and README.md subdirectories
-5. THE Workshop_VM SHALL have Cedudo installed at /opt/cedudo/ with cedudo.py, operations.json, cedudo.cjar, and venv/
-6. THE Workshop_VM SHALL have a symlink at /usr/local/sbin/cedudo pointing to /opt/cedudo/cedudo.py
-7. THE Workshop_VM SHALL have a sudoers configuration at /etc/sudoers.d/cedudo permitting only the cedudo helper (not underlying administrative commands)
+5. THE Workshop_VM SHALL have Cedudo installed at /opt/cedudo/ with cedudo.py (setuid root), operations.json, cedudo.cjar, and venv/
+6. THE Workshop_VM SHALL have a symlink at /usr/local/bin/cedudo pointing to /opt/cedudo/cedudo.py
+7. THE Workshop_VM SHALL have /opt/cedudo/cedudo.py with setuid bit set (mode 4755) and owned by root
 8. THE Workshop_VM SHALL include a reset script at /opt/cedudo/reset-workshop that restores the workshop to its initial state
 
 ### Requirement 2: Operations Manifest and Command Binding
@@ -59,19 +59,18 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 
 ### Requirement 3: Identity and Principal Construction
 
-**User Story:** As a security engineer, I want the principal identity to be derived from trusted OS sources, so that users cannot impersonate other principals or forge group memberships.
+**User Story:** As a security engineer, I want the principal identity to be derived from trusted OS sources via the setuid mechanism, so that users cannot impersonate other principals or forge group memberships.
 
 #### Acceptance Criteria
 
-1. WHEN Cedudo is invoked, THE Cedudo SHALL verify it is running with effective UID 0 (root)
-2. WHEN Cedudo is invoked, THE Cedudo SHALL extract the original username from SUDO_USER environment variable
-3. WHEN Cedudo is invoked, THE Cedudo SHALL extract the original UID from SUDO_UID environment variable
-4. WHEN Cedudo is invoked, THE Cedudo SHALL extract the original GID from SUDO_GID environment variable
-5. WHEN Cedudo extracts identity, THE Cedudo SHALL validate the username, UID, and GID against the system user database (pwd.getpwnam)
-6. IF the original user is root or UID is 0, THEN THE Cedudo SHALL terminate with error "direct root invocation is not a workshop principal"
-7. WHEN Cedudo constructs the Principal, THE Cedudo SHALL query group memberships using os.getgrouplist with the username and GID
-8. THE Principal SHALL be a Cedar entity of type Linux::User containing uid, gid, groups, home, shell, and cedar_entity_mapping fields
-9. THE Cedudo SHALL NOT accept username, UID, GID, or group memberships from command-line arguments
+1. WHEN Cedudo is invoked, THE Cedudo SHALL verify it is running with effective UID 0 (root) via setuid bit
+2. WHEN Cedudo is invoked, THE Cedudo SHALL extract the original user's UID using os.getuid() (real UID preserved by setuid)
+3. WHEN Cedudo is invoked, THE Cedudo SHALL extract the original user's GID using os.getgid() (real GID preserved by setuid)
+4. IF the real UID is 0, THEN THE Cedudo SHALL terminate with error "direct root invocation is not a workshop principal"
+5. WHEN Cedudo extracts identity, THE Cedudo SHALL validate the UID and GID against the system user database using pwd.getpwuid()
+6. WHEN Cedudo constructs the Principal, THE Cedudo SHALL query group memberships using os.getgrouplist with the username and GID
+7. THE Principal SHALL be a Cedar entity of type Linux::User containing uid, gid, groups, home, shell, and cedar_entity_mapping fields
+8. THE Cedudo SHALL NOT accept username, UID, GID, or group memberships from command-line arguments or environment variables
 
 ### Requirement 4: Context Derivation from Trusted Environment
 
@@ -95,7 +94,7 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 
 1. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL validate that /opt/cedudo/cedudo.cjar is a regular file owned by root
 2. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL validate that cedudo.cjar is not group/world writable
-3. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL remove all CEDARLING_* environment variables inherited from sudo
+3. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL sanitize CEDARLING_* environment variables to prevent policy source tampering
 4. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL set CEDARLING_POLICY_STORE_LOCAL_FN to /opt/cedudo/cedudo.cjar
 5. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL set CEDARLING_APPLICATION_NAME to "cedudo"
 6. WHEN Cedudo initializes Cedarling, THE Cedudo SHALL create BootstrapConfig from environment and instantiate Cedarling
@@ -164,10 +163,10 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 2. WHEN deploy-policy.sh is invoked, THE script SHALL validate cedudo.cjar format
 3. WHEN deploy-policy.sh is invoked, THE script SHALL copy ~/cedudo-workshop/policy/cedudo.cjar to /opt/cedudo/cedudo.cjar with sudo
 4. WHEN deploy-policy.sh is invoked, THE script SHALL set root ownership and 0644 permissions on /opt/cedudo/cedudo.cjar
-5. WHEN alice runs "sudo cedudo view-logs", THE Cedudo SHALL permit the operation (alice is in developers group)
-6. WHEN alice runs "sudo cedudo restart-demo" with starter policies, THE Cedudo SHALL deny the operation (alice is not in operators group)
-7. WHEN bob runs "sudo cedudo restart-demo" locally with starter policies, THE Cedudo SHALL permit the operation (bob is in operators group and local_console is true)
-8. WHEN bob runs "sudo cedudo restart-demo" over SSH with starter policies, THE Cedudo SHALL deny the operation (local_console is false)
+5. WHEN alice runs "cedudo view-logs", THE Cedudo SHALL permit the operation (alice is in developers group)
+6. WHEN alice runs "cedudo restart-demo" with starter policies, THE Cedudo SHALL deny the operation (alice is not in operators group)
+7. WHEN bob runs "cedudo restart-demo" locally with starter policies, THE Cedudo SHALL permit the operation (bob is in operators group and local_console is true)
+8. WHEN bob runs "cedudo restart-demo" over SSH with starter policies, THE Cedudo SHALL deny the operation (local_console is false)
 
 ### Requirement 11: Workshop Attack Scenarios
 
@@ -175,13 +174,13 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 
 #### Acceptance Criteria
 
-1. WHEN an attendee runs "sudo cedudo ../../bin/bash", THE Cedudo SHALL reject the operation with "unknown operation" error before Cedar evaluation
-2. WHEN an attendee runs "sudo cedudo 'restart-demo; /bin/bash'", THE Cedudo SHALL reject the operation with "operation must match [a-z][a-z0-9-]{0,63}" error
-3. WHEN an attendee runs "sudo cedudo restart-demo --service ssh", THE Cedudo SHALL accept only "restart-demo" as the Operation_ID and ignore additional arguments
-4. WHEN an attendee runs "sudo cedudo root-shell", THE Cedudo SHALL reject the operation with "unknown operation" error (root-shell is not in operations manifest)
-5. WHEN an attendee attempts to modify operations.json without sudo, THE file system SHALL deny write access
-6. WHEN an attendee attempts to modify cedudo.cjar without sudo, THE file system SHALL deny write access
-7. WHEN an attendee attempts to run "sudo systemctl restart cedar-demo" directly, THE sudoers configuration SHALL deny access
+1. WHEN an attendee runs "cedudo ../../bin/bash", THE Cedudo SHALL reject the operation with "unknown operation" error before Cedar evaluation
+2. WHEN an attendee runs "cedudo 'restart-demo; /bin/bash'", THE Cedudo SHALL reject the operation with "operation must match [a-z][a-z0-9-]{0,63}" error
+3. WHEN an attendee runs "cedudo restart-demo --service ssh", THE Cedudo SHALL accept only "restart-demo" as the Operation_ID and ignore additional arguments
+4. WHEN an attendee runs "cedudo root-shell", THE Cedudo SHALL reject the operation with "unknown operation" error (root-shell is not in operations manifest)
+5. WHEN an attendee attempts to modify operations.json without root privileges, THE file system SHALL deny write access
+6. WHEN an attendee attempts to modify cedudo.cjar without root privileges, THE file system SHALL deny write access
+7. WHEN an attendee attempts to run "systemctl restart cedar-demo" directly, THE system SHALL deny access (user lacks privileges)
 
 ### Requirement 12: Policy Modification Exercise
 
@@ -194,8 +193,8 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 3. WHEN an attendee adds a permit policy for principals in "developers" group to perform Restart when resource.critical is false and context.local_console is true, THE policy SHALL be syntactically valid Cedar
 4. WHEN an attendee rebuilds cedudo.cjar with the modified policy, THE build-cjar.sh script SHALL compile the policy without errors
 5. WHEN an attendee tests the modified policy in Tarp, THE Tarp SHALL show permit decision for alice performing Restart on cedar-demo locally
-6. WHEN an attendee deploys the modified policy to /opt/cedudo/, THE Cedudo SHALL permit alice to run "sudo cedudo restart-demo" locally
-7. WHEN alice runs "sudo cedudo restart-demo" with the modified policy, THE Demo_Service SHALL restart successfully
+6. WHEN an attendee deploys the modified policy to /opt/cedudo/, THE Cedudo SHALL permit alice to run "cedudo restart-demo" locally
+7. WHEN alice runs "cedudo restart-demo" with the modified policy, THE Demo_Service SHALL restart successfully
 
 ### Requirement 13: Contextual Control Exercise
 
@@ -215,7 +214,7 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 
 #### Acceptance Criteria
 
-1. THE workshop SHALL allocate 0-8 minutes for introduction to sudoers complexity and workshop architecture
+1. THE workshop SHALL allocate 0-8 minutes for introduction to privilege management challenges and workshop architecture
 2. THE workshop SHALL allocate 8-18 minutes for VM inspection and testing initial permissions with alice and bob
 3. THE workshop SHALL allocate 18-32 minutes for reproducing Cedar decisions in Tarp with unsigned authorization
 4. THE workshop SHALL allocate 32-45 minutes for modifying policies to permit developers to restart noncritical services locally
@@ -265,7 +264,7 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 5. IF a trusted file validation fails, THEN THE Cedudo SHALL terminate with error describing the validation failure
 6. THE Operations_Manifest SHALL have ownership root:root and permissions 0644
 7. THE Policy_Store SHALL have ownership root:root and permissions 0644
-8. THE cedudo.py SHALL have ownership root:root and permissions 0755
+8. THE cedudo.py SHALL have ownership root:root and permissions 4755 (setuid bit set)
 
 ### Requirement 18: Error Handling and Fail-Closed Behavior
 
@@ -275,7 +274,7 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 
 1. IF Cedudo cannot read the operations manifest, THEN THE Cedudo SHALL terminate with exit code 78 (EX_CONFIG) without executing any command
 2. IF Cedudo receives an unknown Operation_ID, THEN THE Cedudo SHALL terminate with exit code 77 (EX_NOPERM) without executing any command
-3. IF Cedudo cannot resolve the invoking user from SUDO_USER, THEN THE Cedudo SHALL terminate with error "invalid sudo identity" without executing any command
+3. IF Cedudo cannot resolve the invoking user from real UID, THEN THE Cedudo SHALL terminate with error "invoking user not found in account database" without executing any command
 4. IF Cedudo cannot initialize Cedarling, THEN THE Cedudo SHALL terminate with exit code 69 (EX_UNAVAILABLE) without executing any command
 5. IF Cedudo cannot evaluate the authorization request, THEN THE Cedudo SHALL terminate with exit code 69 (EX_UNAVAILABLE) without executing any command
 6. IF Cedudo validates that an executable is group/world writable, THEN THE Cedudo SHALL terminate with error "executable is group/world writable" without executing any command
@@ -302,10 +301,10 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 #### Acceptance Criteria
 
 1. THE Workshop_Files SHALL include a README.md at ~/cedudo-workshop/README.md documenting workshop objectives and architecture
-2. THE README.md SHALL explain the separation of concerns: sudo (privilege transition), cedudo (enforcement), Cedarling (decision), Tarp (testing)
+2. THE README.md SHALL explain the separation of concerns: cedudo setuid (privilege transition and enforcement), Cedarling (decision), Tarp (testing)
 3. THE README.md SHALL provide step-by-step instructions for each workshop phase
 4. THE README.md SHALL include diagrams showing the architecture with Tarp, Policy_Server, cedudo, and Cedarling components
 5. THE README.md SHALL document the PARC model: Principal (Linux user), Action (privileged capability), Resource (service/host), Context (session conditions)
 6. THE README.md SHALL provide examples of permit, deny, and forbid policies with explanations
-7. THE README.md SHALL include a troubleshooting section for common issues (Policy_Server not running, Tarp not loading policies, sudoers misconfiguration)
+7. THE README.md SHALL include a troubleshooting section for common issues (Policy_Server not running, Tarp not loading policies, setuid bit not set)
 8. THE README.md SHALL provide instructions for resetting the workshop to its initial state using the reset script
