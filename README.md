@@ -56,7 +56,7 @@ Two components work together:
 | **Cedarling** | Policy Decision Point: evaluate Cedar policies and return permit or deny |
 
 Tarp is the browser workbench. Both Tarp and `cedudo` load the **same** policy
-store file: `cedudo.cjar` (an AuthZEN Constraint JAR—a ZIP of policies, schema,
+store file: `cedudo.cjar` (a Cedar Archive—a ZIP of policies, schema,
 and metadata).
 
 Authorization requests use four parts (PARC):
@@ -78,6 +78,15 @@ Cedar is **default-deny**. A matching `forbid` always wins over a `permit`.
 | **bob** | `operators` | May read logs and restart the demo service **from the local console** |
 
 You will start class logged in as **alice**.
+
+If the prepared image does not already include these accounts, create them with home directories and the groups the starter policies check:
+
+```bash
+sudo groupadd developers
+sudo groupadd operators
+sudo useradd -m -G developers alice
+sudo useradd -m -G operators bob
+```
 
 ### 5. Optional: open this README offline
 
@@ -382,7 +391,7 @@ privilege path.
 |---------|----------------|
 | Tarp will not load policies | Is `python3 ../tools/serve-policy.py` still running? URL exactly `http://127.0.0.1:8000/cedudo.cjar`? |
 | CORS errors in the browser | Use the provided `serve-policy.py` (it sends CORS headers) |
-| `Cedarling initialization failed` | `/opt/cedudo/cedudo.cjar` exists, owned by root, not group/world writable |
+| `Cedarling initialization failed` | `/opt/cedudo/cedudo.cjar` exists, owned by root, not group/world writable; `metadata.json` uses `cedar_version` (not `policy_engine`) |
 | `unknown operation` | Only IDs in `operations.json` are valid (`view-logs`, `status-demo`, `restart-demo`) |
 | `operation must match [a-z]…` | Operation IDs are kebab-case only—no paths or shell metacharacters |
 | `must be installed as setuid root` | The C wrapper `/opt/cedudo/cedudo` must have setuid bit. Run: `sudo chmod 4755 /opt/cedudo/cedudo` |
@@ -406,7 +415,7 @@ cedudo.py                 Python enforcement script
 cedudo-wrapper.c          C wrapper for setuid support
 install-wrapper.sh        Script to build and install the wrapper
 operations.json           Operation ID → fixed argv
-policy/store/             AuthZEN policy store (edit here)
+policy/store/             Cedarling policy store (edit here)
 policy/cedudo.cjar        Packaged store (ZIP)
 examples/                 Tarp unsigned request samples
 tools/build-cjar.sh       Package store → .cjar
@@ -416,3 +425,78 @@ tools/deploy-policy.sh    Install .cjar to /opt/cedudo/
 
 Design notes and requirements for facilitators live under
 [`.kiro/specs/cedar-sudo-workshop/`](.kiro/specs/cedar-sudo-workshop/).
+
+
+## Why a C Wrapper?
+
+
+
+### The Setuid-on-Scripts Problem
+
+Modern Linux kernels **ignore the setuid bit on interpreted scripts** (files beginning with `#!`) for security reasons. This is by design - see the Linux kernel documentation on script execution.
+
+When you set the setuid bit on `cedudo.py`:
+
+- The bit is stored in the filesystem
+- But the kernel ignores it when executing the script
+- The Python interpreter runs with the **user's privileges**, not root
+
+
+
+### The Solution
+
+The C wrapper (`cedudo-wrapper.c`) is a compiled binary that:
+
+1. **Can use setuid** (compiled binaries are allowed)
+2. Executes the Python interpreter with the script path
+3. The Python process inherits the elevated privileges
+4. `cedudo.py` can then use `os.getuid()` (real UID) and `os.geteuid()` (effective UID = 0)
+
+This is the same approach used by many setuid wrappers in production systems.
+
+## Security Notes
+
+
+
+### Setuid Root
+
+The `cedudo.py` script must be installed with the setuid bit (mode 4755) so it runs with root privileges when invoked by regular users. This is controlled and safe because:
+
+1. The script only accepts operation IDs (kebab-case identifiers), not commands
+2. All commands and arguments come from a root-owned manifest (`operations.json`)
+3. Authorization is evaluated by Cedarling using Cedar policies
+4. The script fails closed on any error
+5. The environment is sanitized before executing privileged commands
+
+
+
+### File Security Requirements
+
+All files in `/opt/cedudo/` must be:
+
+- Owned by root (UID 0)
+- Not group-writable or world-writable
+- Regular files (not symlinks)
+
+The script validates these requirements at runtime and refuses to execute if they're not met.
+
+### How it works
+
+`cedudo` uses the setuid mechanism for privilege elevation:
+
+- **Direct invocation**: Users run `cedudo` directly (no sudo wrapper)
+- **Cedar-based access control**: All authorization decisions come from Cedar policies
+- **Simple privilege model**: One setuid executable that handles elevation and enforcement
+- **Fail-safe design**: Authorization, manifest validation, and secure command execution
+
+
+
+### What sudo is still needed for
+
+Administrative tasks like:
+
+- Deploying policy updates (`sudo ./tools/deploy-policy.sh`)
+- Installing the system (`sudo` commands in this guide)
+- Resetting workshop state (`sudo /opt/cedudo/reset-workshop`)
+
+These tasks modify root-owned system files and are outside cedudo's operation.

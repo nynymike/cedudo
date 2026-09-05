@@ -7,7 +7,7 @@ Usage:
 
 The caller supplies only an operation ID. The command and every argument come
 from a root-owned manifest at /opt/cedudo/operations.json. Authorization is
-evaluated by Cedarling against the AuthZEN Constraint JAR (.cjar) at
+evaluated by Cedarling against the local Cedar Archive (.cjar) at
 /opt/cedudo/cedudo.cjar.
 
 This tool must be installed as a setuid-root executable to function properly.
@@ -283,7 +283,7 @@ def build_context() -> dict[str, Any]:
 
 
 def initialize_cedarling() -> Cedarling:
-    """Initialize Cedarling using only the trusted local AuthZEN .cjar store."""
+    """Initialize Cedarling using only the trusted local .cjar store."""
     require_trusted_file(POLICY_STORE, "policy store")
 
     # Prevent sudo-preserved variables from choosing another Cedarling

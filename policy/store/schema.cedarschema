@@ -4,12 +4,12 @@ namespace Linux {
     gid: Long,
     groups: Set<String>,
     home: String,
-    shell: String,
+    shell: String
   };
 
   entity Service = {
     environment: String,
-    critical: Boolean,
+    critical: Bool
   };
 
   entity Host;
@@ -20,8 +20,8 @@ namespace Linux {
     context: {
       current_time: Long,
       hostname: String,
-      local_console: Boolean,
-      interactive: Boolean,
+      local_console: Bool,
+      interactive: Bool
     }
   };
 
@@ -31,8 +31,8 @@ namespace Linux {
     context: {
       current_time: Long,
       hostname: String,
-      local_console: Boolean,
-      interactive: Boolean,
+      local_console: Bool,
+      interactive: Bool
     }
   };
 
@@ -42,8 +42,8 @@ namespace Linux {
     context: {
       current_time: Long,
       hostname: String,
-      local_console: Boolean,
-      interactive: Boolean,
+      local_console: Bool,
+      interactive: Bool
     }
   };
 
@@ -53,8 +53,8 @@ namespace Linux {
     context: {
       current_time: Long,
       hostname: String,
-      local_console: Boolean,
-      interactive: Boolean,
+      local_console: Bool,
+      interactive: Bool
     }
   };
 }

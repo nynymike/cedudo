@@ -18,12 +18,17 @@ if ! unzip -t "${SRC}" > /dev/null; then
 fi
 
 if ! unzip -l "${SRC}" | grep -q 'metadata.json'; then
-  echo "error: ${SRC} is missing metadata.json (not an AuthZEN policy store)" >&2
+  echo "error: ${SRC} is missing metadata.json (not a Cedarling policy store)" >&2
+  exit 1
+fi
+
+if ! unzip -l "${SRC}" | grep -q 'schema.cedarschema'; then
+  echo "error: ${SRC} is missing schema.cedarschema (not a Cedarling policy store)" >&2
   exit 1
 fi
 
 if ! unzip -l "${SRC}" | grep -q 'policies/'; then
-  echo "error: ${SRC} is missing policies/ (not an AuthZEN policy store)" >&2
+  echo "error: ${SRC} is missing policies/ (not a Cedarling policy store)" >&2
   exit 1
 fi
 
