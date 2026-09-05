@@ -6,7 +6,5 @@ permit (
 )
 when {
     principal has groups &&
-    principal.groups.contains("operators") &&
-    context has local_console &&
-    context.local_console == true
+    principal.groups.contains("operators") 
 };
