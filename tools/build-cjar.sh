@@ -21,6 +21,11 @@ if [[ ! -f "${STORE}/schema.cedarschema" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${STORE}/schema.json" ]]; then
+  echo "error: missing required schema.json in ${STORE}" >&2
+  exit 1
+fi
+
 if [[ ! -d "${STORE}/policies" ]] || ! compgen -G "${STORE}/policies/*" > /dev/null; then
   echo "error: policies/ must contain at least one policy file" >&2
   exit 1

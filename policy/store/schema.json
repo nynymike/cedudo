@@ -1,0 +1,98 @@
+{
+  "Linux": {
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "uid": { "type": "Long" },
+            "gid": { "type": "Long" },
+            "groups": {
+              "type": "Set",
+              "element": { "type": "String" }
+            },
+            "home": { "type": "String" },
+            "shell": { "type": "String" }
+          }
+        }
+      },
+      "Service": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "environment": { "type": "String" },
+            "critical": { "type": "Boolean" }
+          }
+        }
+      },
+      "Host": {
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      }
+    },
+    "actions": {
+      "ReadLogs": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["Service"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "current_time": { "type": "Long" },
+              "hostname": { "type": "String" },
+              "local_console": { "type": "Boolean" },
+              "interactive": { "type": "Boolean" }
+            }
+          }
+        }
+      },
+      "ViewStatus": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["Service"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "current_time": { "type": "Long" },
+              "hostname": { "type": "String" },
+              "local_console": { "type": "Boolean" },
+              "interactive": { "type": "Boolean" }
+            }
+          }
+        }
+      },
+      "Restart": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["Service"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "current_time": { "type": "Long" },
+              "hostname": { "type": "String" },
+              "local_console": { "type": "Boolean" },
+              "interactive": { "type": "Boolean" }
+            }
+          }
+        }
+      },
+      "OpenShell": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["Host"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "current_time": { "type": "Long" },
+              "hostname": { "type": "String" },
+              "local_console": { "type": "Boolean" },
+              "interactive": { "type": "Boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

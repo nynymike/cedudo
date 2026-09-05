@@ -342,12 +342,23 @@ def authorize(
 
     try:
         result = cedarling.authorize_unsigned(request)
-        return bool(result.is_allowed())
     except Exception as exc:
         fail(
             f"authorization evaluation failed: {exc}",
             EX_UNAVAILABLE,
         )
+
+    diagnostics = getattr(getattr(result, "response", None), "diagnostics", None)
+    if diagnostics is not None:
+        errors = getattr(diagnostics, "errors", None) or []
+        if errors:
+            details = "; ".join(
+                f"{getattr(err, 'id', '?')}: {getattr(err, 'error', err)}"
+                for err in errors
+            )
+            LOG.warning("Cedar policy evaluation errors: %s", details)
+
+    return bool(result.is_allowed())
 
 
 def safe_environment() -> dict[str, str]:
@@ -401,6 +412,7 @@ def main() -> NoReturn:
     audit = (
         f"user={account.pw_name} "
         f"uid={account.pw_uid} "
+        f"groups={groups} "
         f"operation={operation_id} "
         f"action={operation['action']} "
         f"resource={operation['resource_type']}::"
