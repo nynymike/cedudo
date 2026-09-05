@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Package the AuthZEN policy store directory into cedudo.cjar (ZIP archive).
+# Package the Cedarling policy store directory into cedudo.cjar (ZIP archive).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,18 +16,24 @@ if [[ ! -f "${STORE}/metadata.json" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${STORE}/schema.cedarschema" ]]; then
+  echo "error: missing required schema.cedarschema in ${STORE}" >&2
+  exit 1
+fi
+
 if [[ ! -d "${STORE}/policies" ]] || ! compgen -G "${STORE}/policies/*" > /dev/null; then
   echo "error: policies/ must contain at least one policy file" >&2
   exit 1
 fi
 
-# Basic AuthZEN metadata checks
+# Cedarling 2.3.37 directory-format metadata checks
+# https://docs.jans.io/stable/cedarling/reference/cedarling-policy-store/
 python3 - <<'PY' "${STORE}/metadata.json"
 import json, sys
 path = sys.argv[1]
 with open(path, encoding="utf-8") as fh:
     meta = json.load(fh)
-required = ("policy_engine", "policy_engine_version", "policy_store")
+required = ("cedar_version", "policy_store")
 missing = [k for k in required if k not in meta]
 if missing:
     raise SystemExit(f"metadata.json missing keys: {', '.join(missing)}")
@@ -41,7 +47,7 @@ if not (15 <= len(store_id) <= 64) or any(c not in "0123456789abcdef" for c in s
 print("metadata.json OK")
 PY
 
-# Require @id() on each .cedar policy (AuthZEN / Cedar convention)
+# Require @id() on each .cedar policy (Cedarling directory-format convention)
 for policy in "${STORE}/policies"/*.cedar; do
   if ! grep -qE '@id\("' "${policy}"; then
     echo "error: policy missing @id(...): ${policy}" >&2
