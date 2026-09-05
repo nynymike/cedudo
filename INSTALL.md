@@ -116,7 +116,21 @@ cedudo view-logs
 cedudo restart-demo
 ```
 
+### 7. Create the demo users
 
+The starter policies authorize by Linux group. Create `alice` in `developers` and `bob` in `operators`, each with a home directory:
+
+```bash
+sudo groupadd developers
+sudo groupadd operators
+sudo useradd -m -G developers alice
+sudo useradd -m -G operators bob
+```
+
+| User | Groups | Starter intent |
+|------|--------|----------------|
+| **alice** | `developers` | May read demo logs; may **not** restart yet |
+| **bob** | `operators` | May read logs and restart the demo service from the local console |
 
 ## Verification
 

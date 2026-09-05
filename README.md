@@ -239,14 +239,16 @@ Create a new file, for example
 ```cedar
 @id("developers-restart-noncritical-local")
 permit (
-    principal,
+    principal is Linux::User,
     action == Linux::Action::"Restart",
     resource == Linux::Service::"cedar-demo"
 )
 when {
+    principal has groups &&
     principal.groups.contains("developers") &&
     !resource.critical &&
-    context.local_console
+    context has local_console &&
+    context.local_console == true
 };
 ```
 
@@ -328,6 +330,7 @@ forbid (
     resource
 )
 when {
+    context has local_console &&
     !context.local_console
 };
 ```
@@ -337,14 +340,16 @@ when {
 ```cedar
 @id("operators-oncall-restart")
 permit (
-    principal,
+    principal is Linux::User,
     action == Linux::Action::"Restart",
     resource == Linux::Service::"cedar-demo"
 )
 when {
+    principal has groups &&
     principal.groups.contains("operators") &&
     principal.groups.contains("oncall") &&
-    context.local_console
+    context has local_console &&
+    context.local_console == true
 };
 ```
 

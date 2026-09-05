@@ -27,6 +27,11 @@ if ! unzip -l "${SRC}" | grep -q 'schema.cedarschema'; then
   exit 1
 fi
 
+if ! unzip -l "${SRC}" | grep -q 'schema.json'; then
+  echo "error: ${SRC} is missing schema.json (Cedar JSON schema required for Tarp validation)" >&2
+  exit 1
+fi
+
 if ! unzip -l "${SRC}" | grep -q 'policies/'; then
   echo "error: ${SRC} is missing policies/ (not a Cedarling policy store)" >&2
   exit 1
