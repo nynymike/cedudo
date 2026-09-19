@@ -14,7 +14,7 @@ This document describes how to install `cedudo` as a setuid-root executable.
 
 ```bash
 sudo apt update
-sudo apt install gcc python3 python3-venv python3-pip
+sudo apt install gcc python3 python3-venv python3-pip git
 ```
 
 ## Installation Steps
@@ -78,17 +78,24 @@ chmod +x install-wrapper.sh
 ./install-wrapper.sh
 ```
 
-This creates `/opt/cedudo/cedudo` (a compiled binary with setuid) that executes the Python script.
+This creates `/opt/cedudo/cedudo` (a compiled binary with setuid) that executes the Python script, and also sets the correct file permissions.
 
-### 6. Create a convenient symlink
 
-The `install-wrapper.sh` script already creates this, but if needed:
+Verify ownership is root 
+```bash
+stat -c '%u' /opt/cedudo/cedudo
+```
+Should output `0`
+
 
 ```bash
-sudo ln -sf /opt/cedudo/cedudo /usr/local/bin/cedudo
+stat -c '%a' /opt/cedudo/cedudo
 ```
 
-### 7. Create the demo users
+Should output `4755`
+
+
+### 6. Create the demo users
 
 The starter policies authorize by Linux group. Create `alice` in `developers` and `bob` in `operators`, each with a home directory and bash as the login shell (`useradd` otherwise defaults to `/bin/sh`):
 
@@ -99,48 +106,73 @@ sudo useradd -m -s /bin/bash -G developers alice
 sudo useradd -m -s /bin/bash -G operators bob
 ```
 
+Set passwords for alice and bob.
+
+```bash
+sudo passwd alice
+```
+
+```bash
+sudo passwd bob
+```
+
 
 | User      | Groups       | Starter intent                                                    |
 | --------- | ------------ | ----------------------------------------------------------------- |
 | **alice** | `developers` | May observe the demo (`read-logs`, `view-status`); may **not** restart |
-| **bob**   | `operators`  | May observe the demo and restart **noncritical** services from the local console |
+| **bob**   | `operators`  | May observe the demo and restart **noncritical** services when `intruder_risk_level` is `low` |
 
 
+### 7. Testing
 
+After installation, verify the setup by logging in as different Linux users and trying to run cedudo to do different things.
 
-## Verification
+#### Both `bob` and `alice` should be able to read logs.
 
-After installation, verify the setup:
-
-# Check other files
-```bash
-ls -l /opt/cedudo/
-```
-
-Should show
-```
-# -rwsr-xr-x root root cedudo              ← Compiled wrapper (setuid)
-# -rw-r--r-- root root cedudo.py           ← Python script (no setuid needed)
-# -rw-r--r-- root root operations.json
-# -rw-r--r-- root root cedudo.cjar
-# Verify the setuid bit is set (should output '4755')
-```
-```bash
-stat -c '%a' /opt/cedudo/cedudo
-```
-
-Verify ownership is root (should output '0')
-```bash
-stat -c '%u' /opt/cedudo/cedudo
-```
-
-Test as a regular user (switch to alice or another non-root user)
+To run this command you must be root. It will log you in as alice. 
 ```bash
 su - alice
 ```
 
 ```bash
 cedudo read-logs
+```
+
+```bash
+su - bob
+```
+
+```bash
+cedudo read-logs
+```
+
+#### Only `bob` should be able to restart the demo
+
+To run this command you must be root. It will log you in as alice. 
+```bash
+su - alice
+```
+
+```bash
+cedudo restart-demo
+```
+
+```bash
+su - bob
+```
+
+```bash
+cedudo restart-demo
+```
+
+#### Even `bob` can't restart a "critical" resource
+
+```bash
+su - bob
+```
+
+```bash
+cedudo restart-ssh
 ```
 
 

@@ -43,7 +43,8 @@
               "current_time": { "type": "Long" },
               "hostname": { "type": "String" },
               "local_console": { "type": "Boolean" },
-              "interactive": { "type": "Boolean" }
+              "interactive": { "type": "Boolean" },
+              "intruder_risk_level": { "type": "String" }
             }
           }
         }
@@ -58,7 +59,8 @@
               "current_time": { "type": "Long" },
               "hostname": { "type": "String" },
               "local_console": { "type": "Boolean" },
-              "interactive": { "type": "Boolean" }
+              "interactive": { "type": "Boolean" },
+              "intruder_risk_level": { "type": "String" }
             }
           }
         }
@@ -73,7 +75,8 @@
               "current_time": { "type": "Long" },
               "hostname": { "type": "String" },
               "local_console": { "type": "Boolean" },
-              "interactive": { "type": "Boolean" }
+              "interactive": { "type": "Boolean" },
+              "intruder_risk_level": { "type": "String" }
             }
           }
         }
@@ -88,7 +91,8 @@
               "current_time": { "type": "Long" },
               "hostname": { "type": "String" },
               "local_console": { "type": "Boolean" },
-              "interactive": { "type": "Boolean" }
+              "interactive": { "type": "Boolean" },
+              "intruder_risk_level": { "type": "String" }
             }
           }
         }

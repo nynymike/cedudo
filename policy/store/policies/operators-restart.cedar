@@ -1,4 +1,4 @@
-@id("operators-restart-noncritical-local")
+@id("operators-restart")
 permit (
     principal is Linux::User,
     action == Linux::Action::"restart",
@@ -7,8 +7,6 @@ permit (
 when {
     principal has groups &&
     principal.groups.contains("operators") &&
-    resource has critical &&
-    !resource.critical &&
-    context has local_console &&
-    context.local_console == true
+    context has intruder_risk_level &&
+    context.intruder_risk_level == "low"
 };
