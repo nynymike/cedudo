@@ -26,18 +26,6 @@ namespace Linux {
     }
   };
 
-  action "view-status" appliesTo {
-    principal: [User],
-    resource: [Service],
-    context: {
-      current_time: Long,
-      hostname: String,
-      local_console: Bool,
-      interactive: Bool,
-      intruder_risk_level: String
-    }
-  };
-
   action "restart" appliesTo {
     principal: [User],
     resource: [Service],

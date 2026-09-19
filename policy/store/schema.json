@@ -49,22 +49,6 @@
           }
         }
       },
-      "view-status": {
-        "appliesTo": {
-          "principalTypes": ["User"],
-          "resourceTypes": ["Service"],
-          "context": {
-            "type": "Record",
-            "attributes": {
-              "current_time": { "type": "Long" },
-              "hostname": { "type": "String" },
-              "local_console": { "type": "Boolean" },
-              "interactive": { "type": "Boolean" },
-              "intruder_risk_level": { "type": "String" }
-            }
-          }
-        }
-      },
       "restart": {
         "appliesTo": {
           "principalTypes": ["User"],

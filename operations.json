@@ -10,7 +10,7 @@
     },
     "argv": [
       "/usr/bin/echo",
-      "Dropped you a link to the logs folder on Slack."
+      "Access granted to read logs"
     ]
   },
   "restart-demo": {

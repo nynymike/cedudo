@@ -471,7 +471,6 @@ forbid (
     },
     "actions": {
       "ReadLogs": {},
-      "ViewStatus": {},
       "Restart": {},
       "OpenShell": {}
     }
@@ -662,7 +661,6 @@ Represents the privileged capability being requested:
 
 ```
 Linux::Action::"ReadLogs"
-Linux::Action::"ViewStatus"
 Linux::Action::"Restart"
 Linux::Action::"OpenShell"
 ```
