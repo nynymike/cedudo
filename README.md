@@ -140,7 +140,7 @@ cedudo read-logs
 Expected output should PERMIT because `alice` is a developer.
 
 ```
-cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False exec=['/usr/bin/echo', 'Access granted to read logs']
+cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
 Access granted to read logs
 ```
 
@@ -151,7 +151,7 @@ cedudo restart-demo
 Exected output should DENY because `alice` is not an operator.
 
 ```
-cedudo[4702]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False
+cedudo[4702]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=[]
 cedudo: denied: restart-demo
 ```
 
@@ -162,7 +162,7 @@ cedudo restart-ssh
 Expected output should DENY because no user can restart critical services.
 
 ```
-cedudo[4708]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False
+cedudo[4708]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
 cedudo: denied: restart-ssh
 ```
 
@@ -179,7 +179,7 @@ cedudo read-logs
 ```
 
 ```
-cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False exec=['/usr/bin/echo', 'Access granted to read logs']
+cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
 Access granted to read logs
 ```
 
@@ -190,7 +190,7 @@ cedudo restart-demo
 ```
 
 ```
-cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False exec=['/usr/bin/echo', 'Cedar demo is restarting...']
+cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/echo', 'Cedar demo is restarting...']
 Cedar demo is restarting...
 ```
 
@@ -201,7 +201,7 @@ cedudo restart-ssh
 ```
 
 ```
-cedudo[4735]: WARNING DENY user=bob uid=1001 groups=['bob', 'operators'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False
+cedudo[4735]: WARNING DENY user=bob uid=1001 groups=['bob', 'operators'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
 cedudo: denied: restart-ssh
 ```
 

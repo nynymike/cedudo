@@ -319,14 +319,26 @@ def initialize_cedarling() -> Cedarling:
         )
 
 
+def determining_policy_ids(diagnostics: Any) -> list[str]:
+    """Return the policy ids Cedarling says determined the decision."""
+    if diagnostics is None:
+        return []
+    reason = getattr(diagnostics, "reason", None) or ()
+    return sorted(str(policy_id) for policy_id in reason)
+
+
 def authorize(
     cedarling: Cedarling,
     account: pwd.struct_passwd,
     groups: list[str],
     operation: dict[str, Any],
     context: dict[str, Any],
-) -> bool:
-    """Evaluate the unsigned Cedar authorization request."""
+) -> tuple[bool, list[str]]:
+    """Evaluate the unsigned Cedar authorization request.
+
+    Returns whether the request is allowed and the policy ids that
+    determined that decision. Evaluation errors fail closed.
+    """
     principal = EntityData(
         cedar_entity_mapping=CedarEntityMapping(
             entity_type="Linux::User",
@@ -376,7 +388,7 @@ def authorize(
             EX_UNAVAILABLE,
         )
 
-    return bool(result.is_allowed())
+    return bool(result.is_allowed()), determining_policy_ids(diagnostics)
 
 
 def safe_environment() -> dict[str, str]:
@@ -395,13 +407,23 @@ def safe_environment() -> dict[str, str]:
 
 
 def parse_operation() -> str:
-    """Accept only the first positional operation ID; ignore trailing args."""
+    """Accept only the first positional operation ID.
+
+    Trailing arguments cannot change the fixed argv from the manifest.
+    They are logged and ignored so an attempt like ``--service ssh`` is
+    visible in the audit trail.
+    """
     if len(sys.argv) < 2:
         fail("usage: cedudo <operation-id>", EX_USAGE)
 
     operation = sys.argv[1]
-    # Trailing arguments (e.g. --service ssh) are ignored by design so
-    # injection attempts cannot change the fixed argv from the manifest.
+    ignored = sys.argv[2:]
+    if ignored:
+        LOG.warning(
+            "ignoring extra arguments: %s",
+            " ".join(repr(arg) for arg in ignored),
+        )
+
     if not OPERATION_RE.fullmatch(operation):
         fail(
             "operation must match [a-z][a-z0-9-]{0,63}",
@@ -419,7 +441,7 @@ def main() -> NoReturn:
     context = build_context()
 
     cedarling = initialize_cedarling()
-    allowed = authorize(
+    allowed, policy_ids = authorize(
         cedarling,
         account,
         groups,
@@ -434,7 +456,10 @@ def main() -> NoReturn:
         f"operation={operation_id} "
         f"action={operation['action']} "
         f"resource={cedar_uid(operation['resource_type'], operation['resource_id'])} "
-        f"local_console={context['local_console']}"
+        f"local_console={context['local_console']} "
+        f"interactive={context['interactive']} "
+        f"intruder_risk_level={context['intruder_risk_level']} "
+        f"policies={policy_ids}"
     )
 
     if not allowed:

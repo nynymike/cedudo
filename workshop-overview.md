@@ -320,7 +320,7 @@ systemctl restart cedar-demo
 Why they fail:
 
 - `cedudo` accepts only a kebab-case **operation ID**, not a command path
-- Trailing arguments (like `--service ssh`) are ignored; argv comes from the
+- Trailing arguments (like `--service ssh`) are logged and ignored; argv comes from the
   root-owned manifest. `cedudo restart-ssh` is a separate operation that Cedar
   **forbids** because `ssh` is marked `critical`
 - `root-shell` is not in `operations.json` (rejected before Cedar runs)
