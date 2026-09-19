@@ -131,40 +131,27 @@ To run this command you must be root. It will log you in as alice.
 su - alice
 ```
 
-Alice should be able to read logs. 
-
 ```bash
 cedudo read-logs
 ```
 
-Expected output should PERMIT because `alice` is a developer.
 
-```
-cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
-Access granted to read logs
-```
+>cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
+>Access granted to read logs
 
 ```bash
 cedudo restart-demo
 ```
 
-Exected output should DENY because `alice` is not an operator.
 
-```
-cedudo[4702]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=[]
-cedudo: denied: restart-demo
-```
+>cedudo[4702]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=[]
+>cedudo: denied: restart-demo
 
 ```bash
 cedudo restart-ssh
 ```
 
-Expected output should DENY because no user can restart critical services.
-
-```
-cedudo[4708]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
-cedudo: denied: restart-ssh
-```
+>cedudo[4708]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
 
 #### Test as `bob`
 
@@ -177,35 +164,23 @@ su - bob
 ```bash
 cedudo read-logs
 ```
-
-```
-cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
-Access granted to read logs
-```
-
-Expected output should PERMIT because `bob` is an Operator.
+>cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
+>Access granted to read logs
 
 ```bash
 cedudo restart-demo
 ```
 
-```
-cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/echo', 'Cedar demo is restarting...']
-Cedar demo is restarting...
-```
-
-Expected output should PERMIT because `bob` is an Operator.
+>cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/echo', 'Cedar demo is restarting...']
+>Cedar demo is restarting...
 
 ```bash
 cedudo restart-ssh
 ```
 
-```
-cedudo[4735]: WARNING DENY user=bob uid=1001 groups=['bob', 'operators'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
-cedudo: denied: restart-ssh
-```
+>cedudo[4735]: WARNING DENY user=bob uid=1001 groups=['bob', 'operators'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
+>cedudo: denied: restart-ssh
 
-Expected output should DENY because no user can restart critical services.
 
 ## Troubleshooting
 
@@ -222,40 +197,10 @@ Expected output should DENY because no user can restart critical services.
 | Permission denied                                         | The **wrapper binary** must be executable with setuid bit set                                                                                   |
 | Script works for root but not regular users               | Check that `/opt/cedudo/cedudo` (not cedudo.py) has the setuid bit: `stat -c '%a' /opt/cedudo/cedudo` Should be '4755'                                                |
 
-
-### Common Issue: Setuid on Scripts
-
-**Symptom:** Permissions look correct (`-rwsr-xr-x` on `cedudo.py`) but still get "must be installed as setuid root"
-
-**Cause:** Modern Linux kernels ignore the setuid bit on interpreted scripts for security reasons.
-
-**Solution:** Use the compiled C wrapper:
-
-```bash
-./install-wrapper.sh
-```
-
-The wrapper is a compiled binary that CAN use setuid, and it executes the Python script with elevated privileges.
-
-### Common Cause: Setuid Bit Lost
-
-The setuid bit can be lost when:
-
-- Copying files without preserving permissions (`cp` without `-p`)
-- Extracting from archives that don't preserve special bits
-- Editing the file with some editors
-- File system mounted with `nosuid` option
-
-**Always re-run the permission commands after copying or modifying the wrapper:**
-
-```bash
-sudo chown root:root /opt/cedudo/cedudo
-sudo chmod 4755 /opt/cedudo/cedudo
-```
-
 ## Uninstallation
 
 ```bash
+sudo rm -rf /root/cedudo
 sudo rm -rf /opt/cedudo
 sudo rm -f /usr/local/bin/cedudo
 ```
