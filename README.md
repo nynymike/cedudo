@@ -259,13 +259,3 @@ sudo chmod 4755 /opt/cedudo/cedudo
 sudo rm -rf /opt/cedudo
 sudo rm -f /usr/local/bin/cedudo
 ```
-
-## Workshop Reset
-
-For workshop environments, you may want to provide a reset script:
-
-```bash
-sudo /opt/cedudo/reset-workshop
-```
-
-This should restore the original policies and service state.

@@ -74,7 +74,7 @@ Cedar is **default-deny**. A matching `forbid` always wins over a `permit`.
 
 | User | Groups | Starter intent |
 |------|--------|----------------|
-| **alice** | `developers` | May read demo logs and view status; may **not** restart yet |
+| **alice** | `developers` | May read demo logs; may **not** restart yet |
 | **bob** | `operators` | May observe the demo and restart **noncritical** services when `intruder_risk_level` is `low` |
 
 You will start class logged in as **alice**.
@@ -158,7 +158,6 @@ Still as **alice**, run:
 id
 systemctl status cedar-demo --no-pager
 cedudo read-logs
-cedudo view-status
 cedudo restart
 cedudo restart-ssh
 ```
@@ -194,10 +193,9 @@ If the facilitator asks you to try **bob** (local console session):
 su - bob
 # or: ssh bob@localhost   (then local_console may be false — see later)
 cedudo restart
-cedudo view-status
 ```
 
-As bob on a **local** console, both should **PERMIT**. `cedudo restart-ssh` should
+As bob on a **local** console, `cedudo restart` should **PERMIT**. `cedudo restart-ssh` should
 still **DENY** (critical service). Switch back to alice when asked.
 
 ---
@@ -225,7 +223,6 @@ Work through these scenarios and note permit vs deny:
 | Example file | Expected |
 |--------------|----------|
 | `alice-read-logs.json` | PERMIT |
-| `alice-view-status.json` | PERMIT |
 | `alice-restart.json` | DENY |
 | `bob-restart.json` (`intruder_risk_level: "low"`) | PERMIT |
 | `bob-restart-remote.json` (`local_console: false`) | PERMIT (starter policy does not require a local console) |
@@ -241,7 +238,7 @@ You are learning PARC without standing up an identity provider.
 Open the starter policies under `policy/store/policies/` (or
 `~/cedudo-workshop/policy/store/policies/`). You will see:
 
-- Developers/operators may `read-logs` and `view-status` on `cedar-demo`
+- Developers/operators may `read-logs` on `cedar-demo`
 - Operators may `restart` **noncritical** services when `context.intruder_risk_level` is `"low"`
 - Restarting a **critical** service (`ssh`) is forbidden
 - Everyone is forbidden from `open-shell`
@@ -416,10 +413,10 @@ privilege path.
 | Tarp will not load policies | Is `python3 ../tools/serve-policy.py` still running? URL exactly `http://127.0.0.1:8000/cedudo.cjar`? |
 | CORS errors in the browser | Use the provided `serve-policy.py` (it sends CORS headers) |
 | `Cedarling initialization failed` | `/opt/cedudo/cedudo.cjar` exists, owned by root, not group/world writable; `metadata.json` uses `cedar_version` (not `policy_engine`) |
-| `unknown operation` | Only IDs in `operations.json` are valid (`read-logs`, `view-status`, `restart`, `restart-ssh`) |
+| `unknown operation` | Only IDs in `operations.json` are valid (`read-logs`, `restart`, `restart-ssh`) |
 | `operation must match [a-z]…` | Operation IDs are kebab-case only—no paths or shell metacharacters |
 | `must be installed as setuid root` | The C wrapper `/opt/cedudo/cedudo` must have setuid bit. Run: `sudo chmod 4755 /opt/cedudo/cedudo` |
-| Permission denied when running cedudo | The wrapper binary must be executable and have setuid bit. See INSTALL.md for C wrapper setup |
+| Permission denied when running cedudo | The wrapper binary must be executable and have setuid bit. See README.md for C wrapper setup |
 | Policies changed but VM behavior did not | Rebuild with `./tools/build-cjar.sh`, then deploy with root privileges |
 
 Reset the VM to the starter state:

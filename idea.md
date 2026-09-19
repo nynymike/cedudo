@@ -84,7 +84,6 @@ Example operations:
 
 | Operation ID   | Cedar action | Cedar resource          | Executed command                 |
 | -------------- | ------------ | ----------------------- | -------------------------------- |
-| `status-demo`  | `ViewStatus` | `Service::"cedar-demo"` | `systemctl status cedar-demo`    |
 | `view-logs`    | `ReadLogs`   | `Service::"cedar-demo"` | `journalctl -u cedar-demo -n 20` |
 | `restart-demo` | `Restart`    | `Service::"cedar-demo"` | `systemctl restart cedar-demo`   |
 | `root-shell`   | `OpenShell`  | `Host::"workshop-vm"`   | Deliberately denied              |
@@ -170,7 +169,6 @@ It must not accept the username or group list from command-line arguments.
 Examples:
 
 ```text
-Linux::Action::"ViewStatus"
 Linux::Action::"ReadLogs"
 Linux::Action::"Restart"
 Linux::Action::"OpenShell"
@@ -610,21 +608,6 @@ It has been syntax-checked with `py_compile`. The implementation:
       "cedar-demo",
       "-n",
       "20",
-      "--no-pager"
-    ]
-  },
-  "status-demo": {
-    "action": "Linux::Action::\"ViewStatus\"",
-    "resource_type": "Linux::Service",
-    "resource_id": "cedar-demo",
-    "resource_attributes": {
-      "environment": "workshop",
-      "critical": false
-    },
-    "argv": [
-      "/usr/bin/systemctl",
-      "status",
-      "cedar-demo",
       "--no-pager"
     ]
   },

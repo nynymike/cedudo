@@ -362,15 +362,19 @@ def authorize(
             EX_UNAVAILABLE,
         )
 
+    # A decision alongside evaluation errors is not trustworthy. Cedarling
+    # can still report Allow for the policies that did evaluate.
     diagnostics = getattr(getattr(result, "response", None), "diagnostics", None)
-    if diagnostics is not None:
-        errors = getattr(diagnostics, "errors", None) or []
-        if errors:
-            details = "; ".join(
-                f"{getattr(err, 'id', '?')}: {getattr(err, 'error', err)}"
-                for err in errors
-            )
-            LOG.warning("Cedar policy evaluation errors: %s", details)
+    errors = getattr(diagnostics, "errors", None) if diagnostics is not None else None
+    if errors:
+        details = "; ".join(
+            f"{getattr(err, 'id', '?')}: {getattr(err, 'error', err)}"
+            for err in errors
+        )
+        fail(
+            f"Cedar policy evaluation errors: {details}",
+            EX_UNAVAILABLE,
+        )
 
     return bool(result.is_allowed())
 
