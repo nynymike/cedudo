@@ -3,7 +3,6 @@
 
 Usage:
     cedudo read-logs
-    cedudo view-status
     cedudo restart
     cedudo restart-ssh
 
