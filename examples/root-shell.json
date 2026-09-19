@@ -20,6 +20,7 @@
   "context": {
     "local_console": true,
     "interactive": true,
+    "intruder_risk_level": "low",
     "current_time": 1700000000,
     "hostname": "workshop-vm"
   }

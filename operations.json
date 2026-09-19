@@ -13,21 +13,7 @@
       "Dropped you a link to the logs folder on Slack."
     ]
   },
-  "view-status": {
-    "action_type": "Linux::Action",
-    "action_id": "view-status",
-    "resource_type": "Linux::Service",
-    "resource_id": "cedar-demo",
-    "resource_attributes": {
-      "environment": "workshop",
-      "critical": false
-    },
-    "argv": [
-      "/usr/bin/echo",
-      "The status of the Cedar demo is: running"
-    ]
-  },
-  "restart": {
+  "restart-demo": {
     "action_type": "Linux::Action",
     "action_id": "restart",
     "resource_type": "Linux::Service",

@@ -292,6 +292,7 @@ def build_context() -> dict[str, Any]:
         "current_time": int(time.time()),
         "hostname": socket.gethostname(),
         "local_console": not remote,
+        "intruder_risk_level": "low",
         "interactive": os.isatty(0) and os.isatty(1),
     }
 

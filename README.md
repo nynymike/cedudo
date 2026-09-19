@@ -66,7 +66,7 @@ Authorization requests use four parts (PARC):
 | **Principal** | The original Linux user (`alice` or `bob`), not root |
 | **Action** | A named capability, e.g. `read-logs` or `restart` |
 | **Resource** | Usually `Linux::Service::"cedar-demo"` |
-| **Context** | Session facts, especially `local_console` (local vs SSH) |
+| **Context** | Session facts: `local_console`, `intruder_risk_level`, and related fields |
 
 Cedar is **default-deny**. A matching `forbid` always wins over a `permit`.
 
@@ -75,7 +75,7 @@ Cedar is **default-deny**. A matching `forbid` always wins over a `permit`.
 | User | Groups | Starter intent |
 |------|--------|----------------|
 | **alice** | `developers` | May read demo logs and view status; may **not** restart yet |
-| **bob** | `operators` | May observe the demo and restart **noncritical** services from the local console |
+| **bob** | `operators` | May observe the demo and restart **noncritical** services when `intruder_risk_level` is `low` |
 
 You will start class logged in as **alice**.
 
@@ -229,8 +229,8 @@ Work through these scenarios and note permit vs deny:
 | `alice-read-logs.json` | PERMIT |
 | `alice-view-status.json` | PERMIT |
 | `alice-restart.json` | DENY |
-| `bob-restart.json` (`local_console: true`) | PERMIT |
-| `bob-restart-remote.json` (`local_console: false`) | DENY |
+| `bob-restart.json` (`intruder_risk_level: "low"`) | PERMIT |
+| `bob-restart-remote.json` (`local_console: false`) | PERMIT (starter policy does not require a local console) |
 | `bob-restart-ssh.json` (`ssh` is critical) | DENY (forbid policy) |
 | `root-shell.json` (`open-shell`) | DENY (forbid policy) |
 
@@ -244,7 +244,7 @@ Open the starter policies under `policy/store/policies/` (or
 `~/cedudo-workshop/policy/store/policies/`). You will see:
 
 - Developers/operators may `read-logs` and `view-status` on `cedar-demo`
-- Operators may `restart` **noncritical** services when `context.local_console` is true
+- Operators may `restart` **noncritical** services when `context.intruder_risk_level` is `"low"`
 - Restarting a **critical** service (`ssh`) is forbidden
 - Everyone is forbidden from `open-shell`
 
