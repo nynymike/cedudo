@@ -20,8 +20,8 @@ This document describes how to install `cedudo` as a setuid-root executable.
 - On Ubuntu/Debian, install the build and Python tools with:
 
 ```bash
-sudo apt update
-sudo apt install gcc python3 python3-venv python3-pip git
+apt update
+apt install gcc python3 python3-venv python3-pip git
 ```
 
 ## Installation Steps
@@ -38,7 +38,7 @@ Later steps assume you are in this clone.
 ### 2. Create the installation directory
 
 ```bash
-sudo mkdir -p /opt/cedudo
+mkdir -p /opt/cedudo
 ```
 
 
@@ -50,15 +50,15 @@ sudo mkdir -p /opt/cedudo
 `cedarling-python`; the import name is `cedarling_python`.
 
 ```bash
-sudo python3 -m venv /opt/cedudo/venv
-sudo /opt/cedudo/venv/bin/pip install --upgrade pip
-sudo /opt/cedudo/venv/bin/pip install cedarling-python
+python3 -m venv /opt/cedudo/venv
+/opt/cedudo/venv/bin/pip install --upgrade pip
+/opt/cedudo/venv/bin/pip install cedarling-python
 ```
 
 Confirm the module is available (this must succeed before you continue):
 
 ```bash
-sudo /opt/cedudo/venv/bin/python3 -c "import cedarling_python; print('cedarling_python OK')"
+/opt/cedudo/venv/bin/python3 -c "import cedarling_python; print('cedarling_python OK')"
 ```
 
 If that command raises `ModuleNotFoundError: No module named 'cedarling_python'`,
@@ -68,9 +68,9 @@ do not run `cedudo.py` with system `python3`.
 ### 4. Copy the files
 
 ```bash
-sudo cp cedudo.py /opt/cedudo/cedudo.py
-sudo cp operations.json /opt/cedudo/operations.json
-sudo cp policy/cedudo.cjar /opt/cedudo/cedudo.cjar
+cp cedudo.py /opt/cedudo/cedudo.py
+cp operations.json /opt/cedudo/operations.json
+cp policy/cedudo.cjar /opt/cedudo/cedudo.cjar
 ```
 
 
@@ -107,10 +107,10 @@ Should output `4755`
 The starter policies authorize by Linux group. Create `alice` in `developers` and `bob` in `operators`, each with a home directory and bash as the login shell (`useradd` otherwise defaults to `/bin/sh`):
 
 ```bash
-sudo groupadd developers
-sudo groupadd operators
-sudo useradd -m -s /bin/bash -G developers alice
-sudo useradd -m -s /bin/bash -G operators bob
+groupadd developers
+groupadd operators
+useradd -m -s /bin/bash -G developers alice
+useradd -m -s /bin/bash -G operators bob
 ```
 
 
@@ -165,6 +165,7 @@ su - bob
 cedudo read-logs
 ```
 >cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
+
 >Access granted to read logs
 
 ```bash
@@ -172,6 +173,7 @@ cedudo restart-demo
 ```
 
 >cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/echo', 'Cedar demo is restarting...']
+
 >Cedar demo is restarting...
 
 ```bash
@@ -179,7 +181,267 @@ cedudo restart-ssh
 ```
 
 >cedudo[4735]: WARNING DENY user=bob uid=1001 groups=['bob', 'operators'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
+
 >cedudo: denied: restart-ssh
+
+# Configuring Ubuntu OIDC Login with authd
+
+Configure SSH keyboard-interactive authentication to log in through an OIDC provider using OAuth Device Flow.
+
+## 1. Install packages
+
+Use Ubuntu 24.04 or later. Run the server commands as root.
+
+```bash
+apt update
+apt install software-properties-common
+
+# Ubuntu 24.04 only
+add-apt-repository ppa:ubuntu-enterprise-desktop/authd
+apt install authd snapd
+snap install authd-oidc
+```
+
+## 2. Prepare the IdP
+
+Register an OIDC client with:
+
+- OAuth Device Authorization Grant enabled.
+- The client authentication method expected by the broker.
+- Permission to request the  `profile`, `email` and `role` scopes.
+
+The issuer must be reachable from Ubuntu over HTTPS. Its certificate must:
+
+- Include the IdP hostname in its DNS Subject Alternative Name (SAN).
+- Have a certificate chain trusted by the broker.
+
+## 3. Register the OIDC broker
+
+Copy the supplied broker registration file:
+
+```bash
+mkdir -p /etc/authd/brokers.d
+
+cp /snap/authd-oidc/current/conf/authd/oidc.conf \
+  /etc/authd/brokers.d/oidc.conf
+
+chmod 644 /etc/authd/brokers.d/oidc.conf
+```
+
+Leave the supplied `[authd]` contents intact. This file tells authd how to communicate with the broker; it does not contain the IdP connection settings.
+
+## 4. Configure the IdP connection
+
+Edit:
+
+```bash
+nano /var/snap/authd-oidc/current/broker.conf
+```
+
+Update the existing sections rather than adding duplicate sections:
+
+```ini
+[oidc]
+issuer = https://idp.example.org
+client_id = <YOUR_CLIENT_ID>
+client_secret = <YOUR_CLIENT_SECRET>
+
+[users]
+allowed_users = alice@gluu.info,bob@gluu.info
+ssh_allowed_suffixes_first_auth = @gluu.info
+```
+
+Replace the issuer and client credentials with your actual values. 
+
+The two user settings have different purposes:
+
+- `allowed_users` controls which authenticated users may log in.
+- `ssh_allowed_suffixes_first_auth` allows usernames with the specified suffix to begin their first SSH login before an authd account exists.
+
+The suffix applies to the SSH username, such as `alice@gluu.info`. It is not the Ubuntu server’s domain or the IdP hostname.
+
+## 5. Enable SSH keyboard-interactive authentication
+
+Keep your current administrator session open while configuring and testing.
+
+Create an early-loading SSH configuration file:
+
+```bash
+cat > /etc/ssh/sshd_config.d/00-authd.conf <<'EOF'
+UsePAM yes
+KbdInteractiveAuthentication yes
+EOF
+```
+
+Validate and reload:
+
+```bash
+sshd -t && systemctl reload ssh
+```
+
+Check the effective settings:
+
+```bash
+sshd -T | grep -E \
+  '^(usepam|kbdinteractiveauthentication|authenticationmethods) '
+```
+
+For this setup, expect:
+
+```text
+usepam yes
+kbdinteractiveauthentication yes
+authenticationmethods any
+```
+
+If the settings differ, inspect conflicting configuration:
+
+```bash
+grep -RniE '^[[:space:]]*(Include|Match|UsePAM|KbdInteractiveAuthentication|ChallengeResponseAuthentication|AuthenticationMethods)' \
+  /etc/ssh/sshd_config /etc/ssh/sshd_config.d/
+```
+
+OpenSSH generally uses the first obtained value for each setting. An earlier directive or a relevant `Match` block may affect the result. Resolve the conflict and repeat validation before testing.
+
+Enabling keyboard-interactive authentication also permits other authentication methods configured in the PAM stack, including local Unix passwords.
+
+## 6. Restart and verify authd
+
+```bash
+snap restart authd-oidc
+systemctl restart authd
+
+systemctl status authd --no-pager
+snap services authd-oidc
+```
+
+Check that PAM and user lookup include authd:
+
+```bash
+grep -n authd /etc/pam.d/common-auth
+grep '^passwd:' /etc/nsswitch.conf
+```
+
+The first command should show an authd PAM module, such as:
+
+```text
+pam_authd_exec.so /usr/libexec/authd-pam
+```
+
+The `passwd:` entry should include `authd`, for example:
+
+```text
+passwd:         files systemd authd
+```
+
+These integrations should be configured by package installation. If they are missing, investigate the package installation before manually editing PAM.
+
+## 7. Verify OIDC discovery
+
+Substitute the exact configured issuer:
+
+```bash
+ISSUER='https://idp.example.org'
+
+curl --fail --show-error \
+  "${ISSUER%/}/.well-known/openid-configuration"
+```
+
+Expect a JSON discovery document containing endpoints such as:
+
+- `issuer`
+- `token_endpoint`
+- `jwks_uri`
+- `device_authorization_endpoint`
+
+Resolve DNS, connectivity, or certificate errors before testing login. Do not use `curl -k` for this verification.
+
+A successful host-side curl test does not guarantee that the snap broker has identical certificate trust; check broker logs if it still fails.
+
+## 8. Test SSH login
+
+From another computer, replace `SERVER_IP` with the Ubuntu server address:
+
+```bash
+ssh -o PasswordAuthentication=no \
+    -o PubkeyAuthentication=no \
+    -o KbdInteractiveAuthentication=yes \
+    -o PreferredAuthentications=keyboard-interactive \
+    -l alice@gluu.info SERVER_IP
+```
+
+When prompted:
+
+1. Select the OIDC provider.
+2. Select device-code authentication if an authentication-method menu appears.
+3. Open the displayed verification URI in a browser.
+4. Enter the displayed code.
+5. Authenticate as Alice and approve the request.
+6. Complete any local-password setup prompt.
+
+Use the full email username. Pre-created local accounts named `alice` and `bob` are separate from the authd-managed accounts. Authd creates its user record and home directory on the first successful login.
+
+After login, verify:
+
+```bash
+whoami
+id
+pwd
+```
+
+Repeat for Bob:
+
+```bash
+ssh -o PasswordAuthentication=no \
+    -o PubkeyAuthentication=no \
+    -o KbdInteractiveAuthentication=yes \
+    -o PreferredAuthentications=keyboard-interactive \
+    -l bob@gluu.info SERVER_IP
+```
+
+On subsequent logins, authd may offer a local password instead of repeating device flow. If the authd local-password prompt offers navigation, enter `r` to return to authentication-method selection and choose device-code login.
+
+## 9. Troubleshoot
+
+Inspect recent logs:
+
+```bash
+journalctl --since "5 minutes ago" \
+  -u authd \
+  -u snap.authd-oidc.authd-oidc.service \
+  -u ssh \
+  --no-pager -l
+```
+
+Or watch while attempting login:
+
+```bash
+journalctl -f \
+  -u authd \
+  -u snap.authd-oidc.authd-oidc.service \
+  -u ssh
+```
+
+| Symptom | What to check |
+|---|---|
+| `authd.service not found` | Install the `authd` Debian package; the broker snap alone is insufficient. |
+| No broker configuration found | Check `/etc/authd/brokers.d/oidc.conf`, then restart authd. |
+| `Permission denied (publickey)` | Check effective SSH keyboard-interactive settings and authentication restrictions. |
+| First-time user “not authorized” | Check `ssh_allowed_suffixes_first_auth` under `[users]`, broker registration, and restart both services. |
+| Authenticated user denied | Check `allowed_users` and the authenticated email username. |
+| Plain password prompt without provider selection | Force keyboard-interactive authentication and inspect PAM and authd logs. |
+| “Error connecting to provider” | Check issuer discovery, DNS, network connectivity, TLS, and broker logs. |
+| Certificate “relies on legacy Common Name” | Replace the IdP certificate with one containing the correct DNS SAN. |
+| Certificate “signed by unknown authority” | Configure certificate trust for the broker or use a publicly trusted certificate. |
+
+Do not share client secrets, access tokens, refresh tokens, or ID tokens when sharing diagnostic output.
+
+## References
+
+- Installation: https://ubuntu.com/docs/authd/stable-docs/howto/install-authd/
+- Broker configuration: https://ubuntu.com/docs/authd/stable-docs/howto/configure-authd/
+- SSH login: https://ubuntu.com/docs/authd/stable-docs/howto/login-ssh/
+- User onboarding: https://ubuntu.com/docs/authd/stable-docs/howto/onboard-authd-user/
 
 
 ## Troubleshooting
