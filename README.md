@@ -190,7 +190,7 @@ Configure SSH keyboard-interactive authentication to log in through an OIDC prov
 
 ## 1. Install packages
 
-Use Ubuntu 24.04 or later. Run the server commands as root.
+Use Ubuntu **24.04** or later. Run the server commands as root.
 
 ```bash
 apt update
@@ -202,26 +202,41 @@ apt install authd snapd
 snap install authd-oidc
 ```
 
-## 2. Prepare the IdP
+## 2. Prepare the OAuth Client to the IdP
 
-Register an OIDC client with:
+How you add a client and the exact config will depend on your IDP. Here is a client config from Janssen Auth Server
+which covers the important points: 
 
-- OAuth Device Authorization Grant enabled.
-- The client authentication method expected by the broker.
-- Permission to request the  `profile`, `email` and `role` scopes.
+```
+redirectUris: ["https://localhost"]
+grantTypes: ["urn:ietf:params:oauth:grant-type:device_code", "authorization_code", "refresh_token"]
+scopes: ["profile", "role", "offline_access", "openid", "email"]
+tokenEndpointAuthMethod: "client_secret_post"
+responseTypes: ["code"]
+applicationType: "native"
+clientName: "My Ubuntu Linux Server"
+description: "Linux authd login Service"
+displayName: "My Ubuntu Linux Server"
+subjectType: "pairwise"
+```
 
-The issuer must be reachable from Ubuntu over HTTPS. Its certificate must:
+3. Add a User to the IDP. 
 
-- Include the IdP hostname in its DNS Subject Alternative Name (SAN).
-- Have a certificate chain trusted by the broker.
+Add the following claims for the User: 
+
+* Username
+* First Name
+* Last Name
+* Display Name
+* Email 
+* Active - `true`
+* Email Verified - `true` 
 
 ## 3. Register the OIDC broker
 
 Copy the supplied broker registration file:
 
 ```bash
-mkdir -p /etc/authd/brokers.d
-
 cp /snap/authd-oidc/current/conf/authd/oidc.conf \
   /etc/authd/brokers.d/oidc.conf
 
@@ -230,37 +245,7 @@ chmod 644 /etc/authd/brokers.d/oidc.conf
 
 Leave the supplied `[authd]` contents intact. This file tells authd how to communicate with the broker; it does not contain the IdP connection settings.
 
-## 4. Configure the IdP connection
-
-Edit:
-
-```bash
-nano /var/snap/authd-oidc/current/broker.conf
-```
-
-Update the existing sections rather than adding duplicate sections:
-
-```ini
-[oidc]
-issuer = https://idp.example.org
-client_id = <YOUR_CLIENT_ID>
-client_secret = <YOUR_CLIENT_SECRET>
-
-[users]
-allowed_users = alice@gluu.info,bob@gluu.info
-ssh_allowed_suffixes_first_auth = @gluu.info
-```
-
-Replace the issuer and client credentials with your actual values. 
-
-The two user settings have different purposes:
-
-- `allowed_users` controls which authenticated users may log in.
-- `ssh_allowed_suffixes_first_auth` allows usernames with the specified suffix to begin their first SSH login before an authd account exists.
-
-The suffix applies to the SSH username, such as `alice@gluu.info`. It is not the Ubuntu server’s domain or the IdP hostname.
-
-## 5. Enable SSH keyboard-interactive authentication
+## 4. Enable SSH keyboard-interactive authentication
 
 Keep your current administrator session open while configuring and testing.
 
@@ -305,6 +290,34 @@ OpenSSH generally uses the first obtained value for each setting. An earlier dir
 
 Enabling keyboard-interactive authentication also permits other authentication methods configured in the PAM stack, including local Unix passwords.
 
+## 5. Configure the IdP connection
+
+Edit:
+
+```bash
+nano /var/snap/authd-oidc/current/broker.conf
+```
+
+Update the existing sections rather than adding duplicate sections:
+
+```ini
+[oidc]
+issuer = <ISSUER_URL>
+client_id = <YOUR_CLIENT_ID>
+client_secret = <YOUR_CLIENT_SECRET>
+extra_scopes = offline_access,email,role,profile,openid
+
+[users]
+home_base_dir = /home
+ssh_allowed_suffixes_first_auth = @gluu.info,@gluu.org
+extra_groups = federated
+```
+
+* *Replace the issuer and client credentials with your actual values.*
+
+* The suffix in `ssh_allowed_suffixes_first_auth` applies to the SSH username, such as `alice@gluu.info`. It is not the Ubuntu server’s domain or the IdP hostname.
+
+
 ## 6. Restart and verify authd
 
 ```bash
@@ -347,6 +360,8 @@ curl --fail --show-error \
   "${ISSUER%/}/.well-known/openid-configuration"
 ```
 
+* *Replace the issuer*
+
 Expect a JSON discovery document containing endpoints such as:
 
 - `issuer`
@@ -367,8 +382,10 @@ ssh -o PasswordAuthentication=no \
     -o PubkeyAuthentication=no \
     -o KbdInteractiveAuthentication=yes \
     -o PreferredAuthentications=keyboard-interactive \
-    -l alice@gluu.info SERVER_IP
+    -l user@domain.example SERVER_IP
 ```
+
+* *Replace the user with your identifier*
 
 When prompted:
 
