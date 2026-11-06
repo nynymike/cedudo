@@ -48,6 +48,174 @@ APP = "cedudo"
 POLICY_STORE = Path("/opt/cedudo/cedudo.cjar")
 OPERATIONS_FILE = Path("/opt/cedudo/operations.json")
 OPERATION_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+HELP_FLAGS = frozenset({"-h", "--h", "--help", "help"})
+
+MANUAL = r"""NAME
+    cedudo - Cedar-authorized privilege wrapper (a restrictive sudo)
+
+SYNOPSIS
+    cedudo <operation-id>
+    cedudo --help
+
+DESCRIPTION
+    cedudo runs a fixed, root-owned privileged operation only if a Cedar
+    policy allows it. The caller supplies one operation id. The actual
+    command and all of its arguments come from a root-owned manifest at
+    /opt/cedudo/operations.json -- never from the caller. Authorization is
+    evaluated locally by Cedarling against the Cedar Archive (.cjar) at
+    /opt/cedudo/cedudo.cjar.
+
+    Any configuration, Cedarling, or policy-evaluation error fails closed:
+    no privileged command is executed.
+
+    This is educational software for learning Cedar authorization with
+    privileged operations. It is not a production privilege manager.
+
+OPTIONS
+    -h, --h, --help
+        Print this manual and exit. Works for any user, including root,
+        and does not require the setuid installation.
+
+    Extra arguments after the operation id are ignored (they cannot change
+    the fixed command) but are logged so attempts are visible in the audit
+    trail.
+
+OPERATIONS
+    Operation ids are defined in /opt/cedudo/operations.json. The shipped
+    workshop manifest defines:
+
+        read-logs      read-logs on Service "cedar-demo"  (noncritical)
+        restart-demo   restart   on Service "cedar-demo"  (noncritical)
+        restart-ssh    restart   on Service "ssh"         (critical)
+
+    Run `cedudo <operation-id>`, for example `cedudo read-logs`. An id must
+    match [a-z][a-z0-9-]{0,63}.
+
+THE AUTHORIZATION REQUEST
+    Every run builds one Cedar request of principal / action / resource /
+    context:
+
+      principal  Linux::User, derived from your real (not effective) uid.
+                 Attributes available in policy:
+                     uid    : Long
+                     gid    : Long
+                     groups : Set<String>   (your Linux group names)
+                     home   : String
+                     shell  : String
+
+      action     Linux::Action, taken from the operation (e.g.
+                 Linux::Action::"restart").
+
+      resource   Linux::Service or Linux::Host from the operation.
+                 Service attributes available in policy:
+                     environment : String
+                     critical    : Bool
+
+      context    Runtime facts gathered by cedudo (see below).
+
+CONTEXT (RUNTIME INFORMATION)
+    cedudo sends these context fields on every request. Reference them in a
+    policy as context.<name>. Guard optional fields with `context has <name>`
+    before use.
+
+        current_time         Long    Unix epoch seconds (US/Central clock).
+        hour                 Long    Hour of day 0-23 in US Central time
+                                     (America/Chicago). Use for business-hours
+                                     rules.
+        hostname             String  Server hostname.
+        local_console        Bool    true at a local console; false when the
+                                     session looks remote (SSH).
+        interactive          Bool    true when stdin and stdout are a TTY.
+        intruder_risk_level  String  Threat level; currently always "low".
+
+    Working with time:
+        The server clock is the source of truth; callers cannot supply the
+        time. `hour` is pre-computed in US Central so policies need no date
+        math. For finer control, convert context.current_time yourself.
+
+        # permit only during business hours (09:00-16:59 Central)
+        when { context.hour >= 9 && context.hour < 17 }
+
+WRITING POLICIES ABOUT USERS AND GROUPS
+    Policies live in the policy store and are packaged into the .cjar.
+    Principals are Linux::User, so match on uid or group membership.
+
+    Permit one Linux group to perform an action:
+
+        @id("operators-restart")
+        permit (
+            principal is Linux::User,
+            action == Linux::Action::"restart",
+            resource
+        )
+        when {
+            principal has groups &&
+            principal.groups.contains("operators")
+        };
+
+    Combine principal, resource, and context conditions:
+
+        permit (
+            principal is Linux::User,
+            action == Linux::Action::"restart",
+            resource
+        )
+        when {
+            principal.groups.contains("operators") &&
+            resource has critical && !resource.critical &&
+            context.intruder_risk_level == "low" &&
+            context.hour >= 9 && context.hour < 17
+        };
+
+    Match a specific user instead of a group:
+
+        when { principal == Linux::User::"alice" }
+
+    Forbid always wins over permit. Use a forbid to enforce a rule across
+    every grant, regardless of how many permits exist:
+
+        @id("forbid-restart-outside-hours")
+        forbid (
+            principal,
+            action == Linux::Action::"restart",
+            resource
+        )
+        when { context.hour < 9 || context.hour >= 17 };
+
+    Each .cedar file needs exactly one @id("...") annotation. After editing
+    schema or policies, rebuild and redeploy the archive:
+
+        tools/build-cjar.sh      # package policy/store into policy/cedudo.cjar
+        tools/deploy-policy.sh   # install it to /opt/cedudo/cedudo.cjar
+
+    If you add a new context field, declare it in BOTH schema.cedarschema
+    and schema.json, under every action that receives it.
+
+EXIT STATUS
+    0    the authorized command executed (it replaces cedudo via exec)
+    64   usage error (EX_USAGE)
+    69   service unavailable, e.g. Cedarling error (EX_UNAVAILABLE)
+    70   internal/software error (EX_SOFTWARE)
+    77   denied or not permitted (EX_NOPERM)
+    78   configuration error, e.g. untrusted manifest (EX_CONFIG)
+
+FILES
+    /opt/cedudo/cedudo            setuid-root wrapper binary
+    /opt/cedudo/cedudo.py         this program
+    /opt/cedudo/operations.json   root-owned operation manifest
+    /opt/cedudo/cedudo.cjar       Cedar policy archive evaluated at runtime
+
+SEE ALSO
+    docs/cedudo.md in the repository, the project README, and the Cedar and
+    Janssen Cedarling documentation.
+"""
+
+
+def print_manual() -> None:
+    """Print the cedudo manual to stdout."""
+    sys.stdout.write(MANUAL)
+    if not MANUAL.endswith("\n"):
+        sys.stdout.write("\n")
 
 EX_USAGE = getattr(os, "EX_USAGE", 64)
 EX_CONFIG = getattr(os, "EX_CONFIG", 78)
@@ -441,6 +609,12 @@ def parse_operation() -> str:
 
 
 def main() -> NoReturn:
+    # Help must work for any user (including root) without the setuid
+    # install, so handle it before any privilege or environment checks.
+    if any(arg in HELP_FLAGS for arg in sys.argv[1:]):
+        print_manual()
+        raise SystemExit(0)
+
     operation_id = parse_operation()
 
     account, groups = invoking_user()
