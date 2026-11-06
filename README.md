@@ -195,10 +195,18 @@ Use Ubuntu **24.04** or later. Run the server commands as root.
 ```bash
 apt update
 apt install software-properties-common
+```
 
+```bash
 # Ubuntu 24.04 only
 add-apt-repository ppa:ubuntu-enterprise-desktop/authd
+```
+
+```bash
 apt install authd snapd
+```
+
+```bash
 snap install authd-oidc
 ```
 
