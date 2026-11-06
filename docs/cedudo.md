@@ -260,6 +260,25 @@ tools/deploy-policy.sh   # install it to /opt/cedudo/cedudo.cjar
 | `/opt/cedudo/operations.json` | Root-owned operation manifest |
 | `/opt/cedudo/cedudo.cjar` | Cedar policy archive evaluated at runtime |
 
+## Sample policies
+
+A reference library covering most of the context fields lives in
+[`policy/samples/`](../policy/samples/) (see its `README.md`). These samples
+are **not deployed** — the build only packages `policy/store/` — so copy one
+into `policy/store/policies/` and rebuild to try it:
+
+| File | Kind | Context used |
+| --- | --- | --- |
+| `permit-weekday-business-hours.cedar` | permit | `day_of_week`, `hour` |
+| `permit-operators-oidc-restart.cedar` | permit | `auth_method`, groups |
+| `permit-restart-from-mgmt-subnet.cedar` | permit | `login_source_ip`, groups |
+| `permit-read-logs-local-console.cedar` | permit | `local_console`, `interactive`, `tty` |
+| `forbid-restart-on-weekend.cedar` | forbid | `is_weekend` |
+| `forbid-change-freeze-date.cedar` | forbid | `date` |
+| `forbid-restart-fresh-session.cedar` | forbid | `session_age_seconds` |
+| `forbid-restart-elevated-risk.cedar` | forbid | `intruder_risk_level` |
+| `forbid-restart-wrong-host.cedar` | forbid | `hostname` |
+
 ## See also
 
 - The project `README.md` for installation and the workshop walkthrough.
