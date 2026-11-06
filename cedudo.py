@@ -31,9 +31,10 @@ import re
 import socket
 import stat
 import sys
-import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, NoReturn
+from zoneinfo import ZoneInfo
 
 from cedarling_python import (
     BootstrapConfig,
@@ -287,8 +288,14 @@ def build_context() -> dict[str, Any]:
         or "sshd" in ancestor_names(os.getppid())
     )
 
+    # Derive time from the server clock in an explicit business timezone so
+    # policies can enforce local business hours regardless of the server's
+    # system timezone. America/Chicago tracks US Central time (CST/CDT).
+    now = datetime.now(ZoneInfo("America/Chicago"))
+
     return {
-        "current_time": int(time.time()),
+        "current_time": int(now.timestamp()),
+        "hour": now.hour,
         "hostname": socket.gethostname(),
         "local_console": not remote,
         "intruder_risk_level": "low",
