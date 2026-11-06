@@ -20,10 +20,19 @@
     "critical": true
   },
   "context": {
-    "local_console": true,
-    "interactive": true,
-    "intruder_risk_level": "low",
     "current_time": 1700000000,
-    "hostname": "workshop-vm"
+    "hour": 10,
+    "day_of_week": 2,
+    "is_weekend": false,
+    "date": "2023-11-14",
+    "hostname": "workshop-vm",
+    "intruder_risk_level": "low",
+    "local_console": true,
+    "is_remote": false,
+    "interactive": true,
+    "tty": "pts/0",
+    "session_age_seconds": 120,
+    "login_source_ip": "",
+    "auth_method": "local"
   }
 }

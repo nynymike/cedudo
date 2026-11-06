@@ -3,7 +3,7 @@
 
 Usage:
     cedudo read-logs
-    cedudo restart
+    cedudo restart-demo
     cedudo restart-ssh
 
 The caller supplies only an operation ID. The command and every argument come
@@ -22,6 +22,7 @@ It is not a production privilege management system.
 from __future__ import annotations
 
 import grp
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -55,6 +56,7 @@ MANUAL = r"""NAME
 
 SYNOPSIS
     cedudo <operation-id>
+    cedudo explain <operation-id>
     cedudo --help
 
 DESCRIPTION
@@ -75,6 +77,24 @@ OPTIONS
     -h, --h, --help
         Print this manual and exit. Works for any user, including root,
         and does not require the setuid installation.
+
+    explain <operation-id>
+        Dry run. Print the full Linux-to-Cedar translation for the operation
+        -- identity (real and effective uid/gid, username, groups), the
+        Cedar action and resource, every context value and where it came
+        from, the policy-store fingerprint, the decision with its
+        determining policy ids and any evaluation errors, and the fixed
+        command that WOULD run. The operation is NEVER executed.
+
+        `explain` uses the real caller and the real runtime context. To try
+        synthetic identities or context overrides ("what if bob ran this
+        over SSH at 22:00?"), use the unprivileged simulator instead:
+
+            tools/cedudo-simulate.py <operation-id> --user bob \
+                --groups operators --local-console false --hour 22
+
+        The simulator is not setuid, is not installed to /opt/cedudo, and
+        also never executes anything.
 
     Extra arguments after the operation id are ignored (they cannot change
     the fixed command) but are logged so attempts are visible in the audit
@@ -249,6 +269,7 @@ FILES
     /opt/cedudo/cedudo.py         this program
     /opt/cedudo/operations.json   root-owned operation manifest
     /opt/cedudo/cedudo.cjar       Cedar policy archive evaluated at runtime
+    tools/cedudo-simulate.py      unprivileged "what if" decision simulator
 
 SEE ALSO
     docs/cedudo.md in the repository, the project README, and the Cedar and
@@ -660,18 +681,24 @@ def determining_policy_ids(diagnostics: Any) -> list[str]:
     return sorted(str(policy_id) for policy_id in reason)
 
 
-def authorize(
-    cedarling: Cedarling,
+def evaluation_errors(diagnostics: Any) -> list[str]:
+    """Return human-readable Cedar evaluation error strings, if any."""
+    if diagnostics is None:
+        return []
+    errors = getattr(diagnostics, "errors", None) or ()
+    return [
+        f"{getattr(err, 'id', '?')}: {getattr(err, 'error', err)}"
+        for err in errors
+    ]
+
+
+def build_request(
     account: pwd.struct_passwd,
     groups: list[str],
     operation: dict[str, Any],
     context: dict[str, Any],
-) -> tuple[bool, list[str]]:
-    """Evaluate the unsigned Cedar authorization request.
-
-    Returns whether the request is allowed and the policy ids that
-    determined that decision. Evaluation errors fail closed.
-    """
+) -> RequestUnsigned:
+    """Build the unsigned Cedar request from identity, operation, context."""
     principal = EntityData(
         cedar_entity_mapping=CedarEntityMapping(
             entity_type="Linux::User",
@@ -692,13 +719,24 @@ def authorize(
         **operation["resource_attributes"],
     )
 
-    request = RequestUnsigned(
+    return RequestUnsigned(
         principal=principal,
         action=operation["action"],
         resource=resource,
         context=context,
     )
 
+
+def evaluate(
+    cedarling: Cedarling,
+    request: RequestUnsigned,
+) -> tuple[bool, list[str], list[str]]:
+    """Evaluate a request, returning (allowed, policy_ids, errors).
+
+    This does NOT fail closed on evaluation errors; callers decide how to
+    treat a decision that was accompanied by errors. The ``explain`` path
+    needs to surface those errors rather than abort.
+    """
     try:
         result = cedarling.authorize_unsigned(request)
     except Exception as exc:
@@ -707,21 +745,142 @@ def authorize(
             EX_UNAVAILABLE,
         )
 
-    # A decision alongside evaluation errors is not trustworthy. Cedarling
-    # can still report Allow for the policies that did evaluate.
-    diagnostics = getattr(getattr(result, "response", None), "diagnostics", None)
-    errors = getattr(diagnostics, "errors", None) if diagnostics is not None else None
+    diagnostics = getattr(
+        getattr(result, "response", None), "diagnostics", None
+    )
+    return (
+        bool(result.is_allowed()),
+        determining_policy_ids(diagnostics),
+        evaluation_errors(diagnostics),
+    )
+
+
+def authorize(
+    cedarling: Cedarling,
+    account: pwd.struct_passwd,
+    groups: list[str],
+    operation: dict[str, Any],
+    context: dict[str, Any],
+) -> tuple[bool, list[str]]:
+    """Evaluate the unsigned Cedar authorization request for the exec path.
+
+    Returns whether the request is allowed and the policy ids that
+    determined that decision. Evaluation errors fail closed: a decision
+    reported alongside errors is not trustworthy for a privileged exec.
+    """
+    request = build_request(account, groups, operation, context)
+    allowed, policy_ids, errors = evaluate(cedarling, request)
+
     if errors:
-        details = "; ".join(
-            f"{getattr(err, 'id', '?')}: {getattr(err, 'error', err)}"
-            for err in errors
-        )
         fail(
-            f"Cedar policy evaluation errors: {details}",
+            f"Cedar policy evaluation errors: {'; '.join(errors)}",
             EX_UNAVAILABLE,
         )
 
-    return bool(result.is_allowed()), determining_policy_ids(diagnostics)
+    return allowed, policy_ids
+
+
+# Where each context field comes from, for the `explain` report. Keep in
+# sync with build_context().
+CONTEXT_SOURCES: dict[str, str] = {
+    "current_time": "server clock (US Central), epoch seconds",
+    "hour": "server clock (US Central), hour 0-23",
+    "day_of_week": "server clock (US Central), ISO weekday 1-7",
+    "is_weekend": "derived from day_of_week",
+    "date": "server clock (US Central), YYYY-MM-DD",
+    "hostname": "socket.gethostname()",
+    "intruder_risk_level": "fixed policy input (currently always 'low')",
+    "local_console": "derived: not remote (see is_remote)",
+    "is_remote": "SSH_CONNECTION/SSH_CLIENT env or sshd ancestor in /proc",
+    "interactive": "os.isatty(stdin) and os.isatty(stdout)",
+    "tty": "os.ttyname() of a std fd",
+    "session_age_seconds": "session leader start time from /proc",
+    "login_source_ip": "SSH_CONNECTION env [WEAK: forgeable]",
+    "auth_method": "PAM_*/SSH env hints [WEAK: forgeable]",
+}
+
+
+def policy_store_fingerprint() -> str:
+    """Return a short SHA-256 fingerprint of the policy-store archive."""
+    try:
+        digest = hashlib.sha256(POLICY_STORE.read_bytes()).hexdigest()
+        return f"sha256:{digest[:16]}"
+    except OSError as exc:
+        return f"unavailable ({exc})"
+
+
+def explain_operation(operation_id: str) -> NoReturn:
+    """Print the full Linux-to-Cedar translation for an operation and exit.
+
+    This NEVER executes the operation. It evaluates authorization against
+    the real caller identity and the real runtime context, then prints a
+    structured report so students can see exactly how a Linux invocation
+    becomes a Cedar request and decision. For synthetic identities or
+    context overrides, use the unprivileged simulator
+    (tools/cedudo-simulate.py) instead.
+    """
+    account, groups = invoking_user()
+    operation = load_operation(operation_id)
+    context = build_context()
+
+    cedarling = initialize_cedarling()
+    request = build_request(account, groups, operation, context)
+    allowed, policy_ids, errors = evaluate(cedarling, request)
+
+    resource_uid = cedar_uid(
+        operation["resource_type"], operation["resource_id"]
+    )
+
+    out = sys.stdout.write
+    out(f"cedudo explain: {operation_id}\n")
+    out("(dry run -- the operation is NOT executed)\n\n")
+
+    out("Identity\n")
+    out(f"  real uid/gid     : {os.getuid()}/{os.getgid()}\n")
+    out(f"  effective uid/gid: {os.geteuid()}/{os.getegid()}\n")
+    out(f"  username         : {account.pw_name}\n")
+    out(f"  groups           : {', '.join(groups) if groups else '(none)'}\n")
+    out(f"  home / shell     : {account.pw_dir} / {account.pw_shell}\n\n")
+
+    out("Operation to Cedar request\n")
+    out(f"  operation id     : {operation_id}\n")
+    out(f"  cedar action     : {operation['action']}\n")
+    out(f"  cedar resource   : {resource_uid}\n")
+    res_attrs = operation.get("resource_attributes") or {}
+    if res_attrs:
+        pairs = ", ".join(f"{k}={v!r}" for k, v in sorted(res_attrs.items()))
+        out(f"  resource attrs   : {pairs}\n")
+    out("\n")
+
+    out("Context (value <- source)\n")
+    width = max(len(k) for k in context)
+    for key in context:
+        source = CONTEXT_SOURCES.get(key, "(source unknown)")
+        out(f"  {key.ljust(width)} = {context[key]!r}  <- {source}\n")
+    out("\n")
+
+    out("Policy store\n")
+    out(f"  path             : {POLICY_STORE}\n")
+    out(f"  fingerprint      : {policy_store_fingerprint()}\n\n")
+
+    out("Decision\n")
+    out(f"  result           : {'ALLOW' if allowed else 'DENY'}\n")
+    out(
+        f"  determining ids  : "
+        f"{', '.join(policy_ids) if policy_ids else '(none)'}\n"
+    )
+    if errors:
+        out("  evaluation errors:\n")
+        for err in errors:
+            out(f"    - {err}\n")
+    else:
+        out("  evaluation errors: (none)\n")
+    out("\n")
+
+    out("Command that WOULD run (not executed)\n")
+    out(f"  argv             : {operation['argv']}\n")
+
+    raise SystemExit(0)
 
 
 def safe_environment() -> dict[str, str]:
@@ -737,6 +896,16 @@ def safe_environment() -> dict[str, str]:
         "PAGER": "cat",
         "SYSTEMD_PAGER": "cat",
     }
+
+
+def validate_operation_id(operation: str) -> str:
+    """Return the operation id if it matches the allowed format, else fail."""
+    if not OPERATION_RE.fullmatch(operation):
+        fail(
+            "operation must match [a-z][a-z0-9-]{0,63}",
+            EX_USAGE,
+        )
+    return operation
 
 
 def parse_operation() -> str:
@@ -757,13 +926,7 @@ def parse_operation() -> str:
             " ".join(repr(arg) for arg in ignored),
         )
 
-    if not OPERATION_RE.fullmatch(operation):
-        fail(
-            "operation must match [a-z][a-z0-9-]{0,63}",
-            EX_USAGE,
-        )
-
-    return operation
+    return validate_operation_id(operation)
 
 
 def main() -> NoReturn:
@@ -772,6 +935,18 @@ def main() -> NoReturn:
     if any(arg in HELP_FLAGS for arg in sys.argv[1:]):
         print_manual()
         raise SystemExit(0)
+
+    # `cedudo explain <operation-id>` is a read-only dry run: it prints the
+    # Linux-to-Cedar translation and decision but never executes anything.
+    if len(sys.argv) >= 2 and sys.argv[1] == "explain":
+        if len(sys.argv) < 3:
+            fail("usage: cedudo explain <operation-id>", EX_USAGE)
+        if len(sys.argv) > 3:
+            LOG.warning(
+                "ignoring extra arguments: %s",
+                " ".join(repr(arg) for arg in sys.argv[3:]),
+            )
+        explain_operation(validate_operation_id(sys.argv[2]))
 
     operation_id = parse_operation()
 

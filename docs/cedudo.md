@@ -8,6 +8,7 @@ This is the manual for `cedudo`. The same text is printed by `cedudo --help`.
 
 ```
 cedudo <operation-id>
+cedudo explain <operation-id>
 cedudo --help
 ```
 
@@ -31,10 +32,61 @@ privileged command is executed.
 | Option | Effect |
 | --- | --- |
 | `-h`, `--h`, `--help`, `help` | Print this manual and exit. Works for any user, including root, and does not require the setuid installation. |
+| `explain <operation-id>` | Dry run: print the full Linux-to-Cedar translation and decision **without executing** the operation. See [Explaining decisions](#explaining-decisions). |
 
 Extra arguments after the operation id are ignored — they cannot change the
 fixed command — but they are logged so attempts are visible in the audit
 trail.
+
+## Explaining decisions
+
+`cedudo explain <operation-id>` is a read-only **dry run**. It evaluates
+authorization for the real caller against the real runtime context and prints
+the whole translation, then exits — **the operation is never executed**. It is
+the fastest way for students to see how a Linux invocation becomes a Cedar
+request and decision.
+
+The report shows:
+
+- **Identity** — real and effective uid/gid, resolved username, groups, home,
+  and shell.
+- **Operation → Cedar request** — operation id, Cedar action, resource, and
+  resource attributes.
+- **Context** — every context value and the source it was derived from (server
+  clock, kernel/TTY, account database, or forgeable environment variable).
+- **Policy store** — path and a SHA-256 fingerprint of the deployed `.cjar`.
+- **Decision** — ALLOW/DENY, the determining policy ids, and any Cedar
+  evaluation errors.
+- **Command** — the fixed `argv` that *would* run.
+
+```bash
+cedudo explain restart-demo
+```
+
+### Simulating "what if" scenarios
+
+`explain` only reports the real caller and real context. To explore how the
+decision changes for a **different identity** or a **different context** —
+"what if bob ran this over SSH at 22:00?" — use the unprivileged simulator,
+which is **not** setuid, is **not** installed to `/opt/cedudo`, and also never
+executes anything:
+
+```bash
+# bob (operators) restarting the demo after hours over SSH
+tools/cedudo-simulate.py restart-demo \
+    --user bob --uid 1001 --gid 1001 --groups operators \
+    --local-console false --hour 22 --login-source-ip 203.0.113.7
+```
+
+It accepts synthetic identity flags (`--user`, `--uid`, `--gid`, `--groups`,
+`--home`, `--shell`) and a context override for every field (`--hour`,
+`--day-of-week`, `--is-weekend`, `--date`, `--local-console`, `--is-remote`,
+`--auth-method`, `--login-source-ip`, and the rest). It defaults to the repo's
+`policy/cedudo.cjar`; use `--policy-store` to point elsewhere.
+
+> Keeping synthetic identities and context overrides in the unprivileged
+> simulator — never in the setuid `cedudo` binary — means a student can never
+> use a "what if" flag to influence a real privileged decision.
 
 ## Operations
 

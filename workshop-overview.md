@@ -134,7 +134,7 @@ one, only on this host, with these arguments…”. The workshop shows a cleaner
                      /             \
                     v               v
 Browser + Tarp                  Local VM
-Cedarling WASM                  cedudo restart
+Cedarling WASM                  cedudo restart-demo
 Policy testing                         |
                                        v
                                Cedarling Python
@@ -158,7 +158,7 @@ Still as **alice**, run:
 id
 systemctl status cedar-demo --no-pager
 cedudo read-logs
-cedudo restart
+cedudo restart-demo
 cedudo restart-ssh
 ```
 
@@ -167,16 +167,16 @@ Expected with the starter policies:
 | Command | Result |
 |---------|--------|
 | `cedudo read-logs` | **PERMIT** — alice is in `developers` |
-| `cedudo restart` | **DENY** — alice is not in `operators` |
+| `cedudo restart-demo` | **DENY** — alice is not in `operators` |
 | `cedudo restart-ssh` | **DENY** — `ssh` is a critical service (forbid policy) |
 
-Each CLI operation ID matches its Cedar action except `restart-ssh`, which
-reuses Cedar action `restart` on a different resource:
+Each CLI operation ID differs from its Cedar action: both `restart-demo` and
+`restart-ssh` use the Cedar action `restart`, on different resources:
 
 | Operation ID | Cedar action | Resource |
 |--------------|--------------|----------|
 | `read-logs` | `read-logs` | `Linux::Service::"cedar-demo"` |
-| `restart` | `restart` | `Linux::Service::"cedar-demo"` (`critical: false`) |
+| `restart-demo` | `restart` | `Linux::Service::"cedar-demo"` (`critical: false`) |
 | `restart-ssh` | `restart` | `Linux::Service::"ssh"` (`critical: true`) |
 
 Confirm that direct admin commands cannot be run:
@@ -192,10 +192,10 @@ If the facilitator asks you to try **bob** (local console session):
 ```bash
 su - bob
 # or: ssh bob@localhost   (then local_console may be false — see later)
-cedudo restart
+cedudo restart-demo
 ```
 
-As bob on a **local** console, `cedudo restart` should **PERMIT**. `cedudo restart-ssh` should
+As bob on a **local** console, `cedudo restart-demo` should **PERMIT**. `cedudo restart-ssh` should
 still **DENY** (critical service). Switch back to alice when asked.
 
 ---
@@ -294,7 +294,7 @@ Note: The deploy script still uses `sudo` for administrative tasks like copying 
 As **alice** on a local console:
 
 ```bash
-cedudo restart
+cedudo restart-demo
 systemctl status cedar-demo --no-pager
 ```
 
@@ -310,8 +310,8 @@ Try to break out. Every attempt below should **fail**:
 
 ```bash
 cedudo ../../bin/bash
-cedudo "restart; /bin/bash"
-cedudo restart --service ssh
+cedudo "restart-demo; /bin/bash"
+cedudo restart-demo --service ssh
 cedudo restart-ssh
 cedudo root-shell
 systemctl restart cedar-demo
