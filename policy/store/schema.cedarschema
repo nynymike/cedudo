@@ -20,10 +20,18 @@ namespace Linux {
     context: {
       current_time: Long,
       hour: Long,
+      day_of_week: Long,
+      is_weekend: Bool,
+      date: String,
       hostname: String,
+      intruder_risk_level: String,
       local_console: Bool,
+      is_remote: Bool,
       interactive: Bool,
-      intruder_risk_level: String
+      tty: String,
+      session_age_seconds: Long,
+      login_source_ip: String,
+      auth_method: String
     }
   };
 
@@ -33,10 +41,18 @@ namespace Linux {
     context: {
       current_time: Long,
       hour: Long,
+      day_of_week: Long,
+      is_weekend: Bool,
+      date: String,
       hostname: String,
+      intruder_risk_level: String,
       local_console: Bool,
+      is_remote: Bool,
       interactive: Bool,
-      intruder_risk_level: String
+      tty: String,
+      session_age_seconds: Long,
+      login_source_ip: String,
+      auth_method: String
     }
   };
 
@@ -46,10 +62,18 @@ namespace Linux {
     context: {
       current_time: Long,
       hour: Long,
+      day_of_week: Long,
+      is_weekend: Bool,
+      date: String,
       hostname: String,
+      intruder_risk_level: String,
       local_console: Bool,
+      is_remote: Bool,
       interactive: Bool,
-      intruder_risk_level: String
+      tty: String,
+      session_age_seconds: Long,
+      login_source_ip: String,
+      auth_method: String
     }
   };
 }

@@ -90,26 +90,63 @@ Every run builds exactly one Cedar request of **principal / action / resource
 policy as `context.<name>`. Guard optional fields with `context has <name>`
 before use.
 
+**Time** (server clock, US Central — trustworthy):
+
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `current_time` | `Long` | Unix epoch seconds, from the US Central clock |
-| `hour` | `Long` | Hour of day `0`–`23` in US Central time (`America/Chicago`) |
+| `current_time` | `Long` | Unix epoch seconds |
+| `hour` | `Long` | Hour of day `0`–`23` (`America/Chicago`) |
+| `day_of_week` | `Long` | ISO weekday `1`–`7` (1 = Monday … 7 = Sunday) |
+| `is_weekend` | `Bool` | `true` on Saturday or Sunday |
+| `date` | `String` | Calendar date `YYYY-MM-DD` (Central) |
+
+**Host and posture:**
+
+| Field | Type | Meaning |
+| --- | --- | --- |
 | `hostname` | `String` | Server hostname |
-| `local_console` | `Bool` | `true` at a local console; `false` when the session looks remote (SSH) |
-| `interactive` | `Bool` | `true` when stdin and stdout are a TTY |
 | `intruder_risk_level` | `String` | Threat level; currently always `"low"` |
+
+**Session shape** (kernel/TTY-derived — reasonably trustworthy):
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `local_console` | `Bool` | `true` at a local console |
+| `is_remote` | `Bool` | `true` when the session looks remote (SSH) |
+| `interactive` | `Bool` | `true` when stdin and stdout are a TTY |
+| `tty` | `String` | Controlling terminal (e.g. `"pts/0"`), `""` if none |
+| `session_age_seconds` | `Long` | Seconds since the session leader started; `-1` if unknown |
+
+**Weak signals** (environment-derived — **advisory only**, forgeable by a
+local user who controls their own environment; never use as a sole gate):
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `login_source_ip` | `String` | Remote client IP from `SSH_CONNECTION`, `""` if local/unknown |
+| `auth_method` | `String` | `"oidc"` \| `"pubkey"` \| `"password"` \| `"local"` \| `"unknown"` |
 
 ### Working with time
 
 The **server clock** is the source of truth — callers cannot supply the time.
-`hour` is pre-computed in US Central (`America/Chicago`, which tracks CST/CDT)
-so policies need no date math. For finer control you can convert
-`context.current_time` yourself.
+`hour`, `day_of_week`, `is_weekend`, and `date` are pre-computed in US Central
+(`America/Chicago`, which tracks CST/CDT) so policies need no date math. For
+finer control you can convert `context.current_time` yourself.
 
 ```cedar
-// permit only during business hours (09:00–16:59 Central)
-when { context.hour >= 9 && context.hour < 17 }
+// permit only during business hours on weekdays (Mon–Fri, 09:00–16:59)
+when {
+    context.day_of_week <= 5 &&
+    context.hour >= 9 && context.hour < 17
+}
 ```
+
+### Trust note
+
+Fields in the **time**, **host**, and **session** groups derive from the
+server clock, the account database, or the kernel and are trustworthy.
+`login_source_ip` and `auth_method` come from environment variables set by
+sshd and PAM; a user who controls their own environment can forge them. Use
+them as **defense-in-depth**, not as the only condition on a sensitive grant.
 
 ## Writing policies about users and groups
 
@@ -153,6 +190,26 @@ when {
 when { principal == Linux::User::"alice" }
 ```
 
+**Restrict by day, network, or auth method** using context:
+
+```cedar
+// only operators who authenticated via OIDC (advisory) may restart
+when {
+    principal.groups.contains("operators") &&
+    context.auth_method == "oidc"
+}
+
+// restart only from the management subnet (advisory signal)
+when { context.login_source_ip like "10.0.0.*" }
+
+// no privileged ops in the first 5 seconds of a session
+when { context.session_age_seconds >= 5 }
+```
+
+> `login_source_ip` and `auth_method` are advisory, forgeable signals (see the
+> trust note above). Pair them with a trustworthy condition rather than
+> relying on them alone.
+
 **`forbid` always wins over `permit`.** Use a forbid to enforce a rule across
 every grant, regardless of how many permits exist:
 
@@ -163,7 +220,10 @@ forbid (
     action == Linux::Action::"restart",
     resource
 )
-when { context.hour < 9 || context.hour >= 17 };
+when {
+    context.is_weekend ||
+    context.hour < 9 || context.hour >= 17
+};
 ```
 
 Each `.cedar` file needs exactly one `@id("...")` annotation.

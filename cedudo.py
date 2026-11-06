@@ -118,23 +118,51 @@ CONTEXT (RUNTIME INFORMATION)
     policy as context.<name>. Guard optional fields with `context has <name>`
     before use.
 
-        current_time         Long    Unix epoch seconds (US/Central clock).
-        hour                 Long    Hour of day 0-23 in US Central time
-                                     (America/Chicago). Use for business-hours
-                                     rules.
+    Time (server clock, US Central; trustworthy):
+        current_time         Long    Unix epoch seconds.
+        hour                 Long    Hour of day 0-23 (America/Chicago).
+        day_of_week          Long    ISO weekday 1-7 (1=Mon ... 7=Sun).
+        is_weekend           Bool    true on Saturday or Sunday.
+        date                 String  Calendar date "YYYY-MM-DD" (Central).
+
+    Host and posture:
         hostname             String  Server hostname.
-        local_console        Bool    true at a local console; false when the
-                                     session looks remote (SSH).
-        interactive          Bool    true when stdin and stdout are a TTY.
         intruder_risk_level  String  Threat level; currently always "low".
+
+    Session shape (kernel/TTY-derived; reasonably trustworthy):
+        local_console        Bool    true at a local console.
+        is_remote            Bool    true when the session looks remote (SSH).
+        interactive          Bool    true when stdin and stdout are a TTY.
+        tty                  String  Controlling terminal (e.g. "pts/0"),
+                                     "" if none.
+        session_age_seconds  Long    Seconds since the session leader
+                                     started; -1 if unknown.
+
+    Weak signals (environment-derived; ADVISORY ONLY, forgeable by a local
+    user who controls their own environment -- do not use as a sole gate):
+        login_source_ip      String  Remote client IP from SSH_CONNECTION,
+                                     "" if local/unknown.
+        auth_method          String  "oidc" | "pubkey" | "password" |
+                                     "local" | "unknown".
 
     Working with time:
         The server clock is the source of truth; callers cannot supply the
-        time. `hour` is pre-computed in US Central so policies need no date
-        math. For finer control, convert context.current_time yourself.
+        time. `hour`, `day_of_week`, `is_weekend`, and `date` are pre-computed
+        in US Central so policies need no date math. For finer control,
+        convert context.current_time yourself.
 
-        # permit only during business hours (09:00-16:59 Central)
-        when { context.hour >= 9 && context.hour < 17 }
+        # permit only during business hours on weekdays (Mon-Fri, 09:00-16:59)
+        when {
+            context.day_of_week <= 5 &&
+            context.hour >= 9 && context.hour < 17
+        }
+
+    Trust note:
+        Fields in the time, host, and session groups derive from the server
+        clock, account database, or kernel and are trustworthy. login_source_ip
+        and auth_method come from environment variables set by sshd/PAM; a user
+        who controls their own environment can forge them. Use them as
+        defense-in-depth, not as the only condition on a sensitive grant.
 
 WRITING POLICIES ABOUT USERS AND GROUPS
     Policies live in the policy store and are packaged into the .cjar.
@@ -171,6 +199,20 @@ WRITING POLICIES ABOUT USERS AND GROUPS
 
         when { principal == Linux::User::"alice" }
 
+    Use context to restrict by day, network, or auth method:
+
+        # only operators who authenticated via OIDC (advisory) may restart
+        when {
+            principal.groups.contains("operators") &&
+            context.auth_method == "oidc"
+        }
+
+        # restart only from the management subnet (advisory signal)
+        when { context.login_source_ip like "10.0.0.*" }
+
+        # no privileged ops in the first 5 seconds of a session
+        when { context.session_age_seconds >= 5 }
+
     Forbid always wins over permit. Use a forbid to enforce a rule across
     every grant, regardless of how many permits exist:
 
@@ -180,7 +222,10 @@ WRITING POLICIES ABOUT USERS AND GROUPS
             action == Linux::Action::"restart",
             resource
         )
-        when { context.hour < 9 || context.hour >= 17 };
+        when {
+            context.is_weekend ||
+            context.hour < 9 || context.hour >= 17
+        };
 
     Each .cedar file needs exactly one @id("...") annotation. After editing
     schema or policies, rebuild and redeploy the archive:
@@ -448,10 +493,110 @@ def ancestor_names(pid: int) -> list[str]:
     return names
 
 
+def login_source_ip() -> str:
+    """Best-effort remote client IP for the session.
+
+    Parsed from SSH_CONNECTION (``<client_ip> <client_port> <server_ip>
+    <server_port>``), falling back to SSH_CLIENT. Returns "" when the
+    session is local or the value is unavailable.
+
+    WEAK SIGNAL: these environment variables are set by sshd but are not
+    guaranteed and can be forged by a user who controls their own
+    environment. Treat as advisory, not as a security boundary.
+    """
+    for var in ("SSH_CONNECTION", "SSH_CLIENT"):
+        value = os.environ.get(var, "").strip()
+        if value:
+            candidate = value.split()[0]
+            try:
+                socket.inet_pton(socket.AF_INET, candidate)
+                return candidate
+            except OSError:
+                pass
+            try:
+                socket.inet_pton(socket.AF_INET6, candidate)
+                return candidate
+            except OSError:
+                pass
+    return ""
+
+
+def controlling_tty() -> str:
+    """Best-effort controlling terminal name, e.g. "pts/0". "" if none.
+
+    The leading "/dev/" is stripped so policy authors can match on the
+    familiar short form (e.g. `context.tty like "pts/*"`).
+    """
+    for fd in (0, 1, 2):
+        try:
+            name = os.ttyname(fd)
+        except OSError:
+            continue
+        prefix = "/dev/"
+        return name[len(prefix):] if name.startswith(prefix) else name
+    return ""
+
+
+def auth_method() -> str:
+    """Best-effort authentication method for this session.
+
+    Derived from PAM environment hints when present, otherwise inferred
+    coarsely from the session shape. Returns one of "oidc", "pubkey",
+    "password", "local", or "unknown".
+
+    WEAK SIGNAL: PAM_* variables are not reliably exported to the final
+    user environment and can be set by a user who controls their own
+    environment. Treat as advisory, not as a security boundary.
+    """
+    pam_service = os.environ.get("PAM_SERVICE", "").lower()
+    pam_type = os.environ.get("PAM_TYPE", "").lower()
+
+    if "authd" in pam_service or "oidc" in pam_service:
+        return "oidc"
+    if pam_type in {"auth", "open_session"} and pam_service:
+        # A PAM session exists but the method is not distinguishable here.
+        return "password"
+    if os.environ.get("SSH_AUTH_INFO_0", "").lower().startswith("publickey"):
+        return "pubkey"
+    if os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_CLIENT"):
+        return "unknown"
+    return "local"
+
+
+def session_age_seconds() -> int:
+    """Best-effort seconds since the controlling session leader started.
+
+    Uses the start time of the session leader process (getsid) from
+    /proc/<pid>/stat relative to system boot. Returns -1 when it cannot be
+    determined (e.g. no /proc, or an unreadable field).
+    """
+    try:
+        sid = os.getsid(0)
+        clock_ticks = os.sysconf("SC_CLK_TCK")
+        if clock_ticks <= 0:
+            return -1
+
+        with open("/proc/uptime", encoding="utf-8") as fh:
+            uptime = float(fh.read().split()[0])
+
+        stat_text = Path(f"/proc/{sid}/stat").read_text(encoding="utf-8")
+        # Field 22 (1-indexed) is starttime, in clock ticks since boot.
+        # The comm field may contain spaces/parens, so split after the ')'.
+        after_comm = stat_text.rsplit(")", 1)[1].split()
+        starttime_ticks = int(after_comm[19])
+        start_seconds = starttime_ticks / clock_ticks
+        age = int(uptime - start_seconds)
+        return age if age >= 0 else 0
+    except (OSError, ValueError, IndexError, AttributeError):
+        return -1
+
+
 def build_context() -> dict[str, Any]:
     """Build authorization context from the execution environment."""
+    source_ip = login_source_ip()
     remote = bool(
-        os.environ.get("SSH_CONNECTION")
+        source_ip
+        or os.environ.get("SSH_CONNECTION")
         or os.environ.get("SSH_CLIENT")
         or "sshd" in ancestor_names(os.getppid())
     )
@@ -460,14 +605,27 @@ def build_context() -> dict[str, Any]:
     # policies can enforce local business hours regardless of the server's
     # system timezone. America/Chicago tracks US Central time (CST/CDT).
     now = datetime.now(ZoneInfo("America/Chicago"))
+    iso_weekday = now.isoweekday()  # 1 = Monday ... 7 = Sunday
 
     return {
+        # Time (server clock, US Central). Trustworthy.
         "current_time": int(now.timestamp()),
         "hour": now.hour,
+        "day_of_week": iso_weekday,
+        "is_weekend": iso_weekday >= 6,
+        "date": now.strftime("%Y-%m-%d"),
+        # Host and threat posture.
         "hostname": socket.gethostname(),
-        "local_console": not remote,
         "intruder_risk_level": "low",
+        # Session shape.
+        "local_console": not remote,
+        "is_remote": remote,
         "interactive": os.isatty(0) and os.isatty(1),
+        "tty": controlling_tty(),
+        "session_age_seconds": session_age_seconds(),
+        # Weak, environment-derived signals (advisory only).
+        "login_source_ip": source_ip,
+        "auth_method": auth_method(),
     }
 
 
@@ -640,6 +798,10 @@ def main() -> NoReturn:
         f"local_console={context['local_console']} "
         f"interactive={context['interactive']} "
         f"intruder_risk_level={context['intruder_risk_level']} "
+        f"day_of_week={context['day_of_week']} "
+        f"date={context['date']} "
+        f"source_ip={context['login_source_ip'] or '-'} "
+        f"auth_method={context['auth_method']} "
         f"policies={policy_ids}"
     )
 

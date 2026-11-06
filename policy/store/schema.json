@@ -42,10 +42,18 @@
             "attributes": {
               "current_time": { "type": "Long" },
               "hour": { "type": "Long" },
+              "day_of_week": { "type": "Long" },
+              "is_weekend": { "type": "Boolean" },
+              "date": { "type": "String" },
               "hostname": { "type": "String" },
+              "intruder_risk_level": { "type": "String" },
               "local_console": { "type": "Boolean" },
+              "is_remote": { "type": "Boolean" },
               "interactive": { "type": "Boolean" },
-              "intruder_risk_level": { "type": "String" }
+              "tty": { "type": "String" },
+              "session_age_seconds": { "type": "Long" },
+              "login_source_ip": { "type": "String" },
+              "auth_method": { "type": "String" }
             }
           }
         }
@@ -59,10 +67,18 @@
             "attributes": {
               "current_time": { "type": "Long" },
               "hour": { "type": "Long" },
+              "day_of_week": { "type": "Long" },
+              "is_weekend": { "type": "Boolean" },
+              "date": { "type": "String" },
               "hostname": { "type": "String" },
+              "intruder_risk_level": { "type": "String" },
               "local_console": { "type": "Boolean" },
+              "is_remote": { "type": "Boolean" },
               "interactive": { "type": "Boolean" },
-              "intruder_risk_level": { "type": "String" }
+              "tty": { "type": "String" },
+              "session_age_seconds": { "type": "Long" },
+              "login_source_ip": { "type": "String" },
+              "auth_method": { "type": "String" }
             }
           }
         }
@@ -76,10 +92,18 @@
             "attributes": {
               "current_time": { "type": "Long" },
               "hour": { "type": "Long" },
+              "day_of_week": { "type": "Long" },
+              "is_weekend": { "type": "Boolean" },
+              "date": { "type": "String" },
               "hostname": { "type": "String" },
+              "intruder_risk_level": { "type": "String" },
               "local_console": { "type": "Boolean" },
+              "is_remote": { "type": "Boolean" },
               "interactive": { "type": "Boolean" },
-              "intruder_risk_level": { "type": "String" }
+              "tty": { "type": "String" },
+              "session_age_seconds": { "type": "Long" },
+              "login_source_ip": { "type": "String" },
+              "auth_method": { "type": "String" }
             }
           }
         }
