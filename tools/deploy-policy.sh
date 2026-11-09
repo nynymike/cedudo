@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Deploy policy/cedudo.cjar to the root-owned enforcement path.
+# Run as an ordinary administrator account; the script calls sudo itself.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

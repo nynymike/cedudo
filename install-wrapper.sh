@@ -4,7 +4,10 @@
 # Most modern Linux systems don't allow setuid on interpreted scripts.
 # This script compiles and installs the C wrapper that enables setuid.
 
+# Run as your ordinary administrator account WITHOUT sudo. The compiler runs as
+# you; only the install steps below call sudo.
 set -e
+[ "$(id -u)" -ne 0 ] || echo "note: running as root; run as an administrator account without sudo instead" >&2
 
 echo "Building cedudo wrapper..."
 gcc -o cedudo-wrapper cedudo-wrapper.c

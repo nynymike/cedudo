@@ -18,12 +18,12 @@ This document describes how to install `cedudo` as a setuid-root executable.
 - Git
 - GCC (to compile the C wrapper)
 - `cedarling_python` (the Janssen Cedarling Python bindings)
-- Root access for installation
+- An ordinary administrator account with `sudo` rights (see "Administrator context" below)
 - On Ubuntu 24.04, install the build and Python tools with:
 
 ```bash
-apt update
-apt install gcc python3 python3-venv python3-pip git
+sudo apt update
+sudo apt install gcc python3 python3-venv python3-pip git
 ```
 
 ### Environment support
@@ -41,11 +41,29 @@ the installer's requirements: it normally has no systemd running, so the
 
 ## Installation Steps
 
+### Administrator context
+
+Every installation step is performed by an **ordinary administrator account
+with `sudo` rights**, working in a clone in that account's home directory. Do
+not open a root shell and do not clone into `/root`.
+
+- Commands that change the system are written with an explicit `sudo`.
+- `install-wrapper.sh` and `tools/deploy-policy.sh` are run **as yourself,
+  without `sudo`**. They call `sudo` internally for the privileged parts, so
+  the compiler runs as you and only the install steps run as root.
+- `tools/install-demo-service.sh`, `tools/uninstall-demo-service.sh` and
+  `tools/test-demo-service.sh` check that they are running as root, so run them
+  **with** `sudo`.
+- Students use their own accounts (`alice`, `bob`) and never run any of this.
+
 ### 1. Clone the repository
 
+As your administrator account:
+
 ```bash
+cd ~
 git clone https://github.com/nynymike/cedudo.git
-cd cedudo
+cd ~/cedudo
 ```
 
 Later steps assume you are in this clone.
@@ -53,7 +71,7 @@ Later steps assume you are in this clone.
 ### 2. Create the installation directory
 
 ```bash
-mkdir -p /opt/cedudo
+sudo install -d -o root -g root -m 0755 /opt/cedudo
 ```
 
 
@@ -65,10 +83,13 @@ mkdir -p /opt/cedudo
 `cedarling-python`; the import name is `cedarling_python`.
 
 ```bash
-python3 -m venv /opt/cedudo/venv
-/opt/cedudo/venv/bin/pip install --upgrade pip
-/opt/cedudo/venv/bin/pip install cedarling-python
+sudo python3 -m venv /opt/cedudo/venv
+sudo /opt/cedudo/venv/bin/python3 -m pip install --upgrade pip
+sudo /opt/cedudo/venv/bin/python3 -m pip install cedarling-python
 ```
+
+The venv is created by root so that it is root-owned, which is what the setuid
+wrapper relies on.
 
 Confirm the module is available (this must succeed before you continue):
 
@@ -83,9 +104,9 @@ do not run `cedudo.py` with system `python3`.
 ### 4. Copy the files
 
 ```bash
-cp cedudo.py /opt/cedudo/cedudo.py
-cp operations.json /opt/cedudo/operations.json
-cp policy/cedudo.cjar /opt/cedudo/cedudo.cjar
+sudo install -o root -g root -m 0644 cedudo.py /opt/cedudo/cedudo.py
+sudo install -o root -g root -m 0644 operations.json /opt/cedudo/operations.json
+sudo install -o root -g root -m 0644 policy/cedudo.cjar /opt/cedudo/cedudo.cjar
 ```
 
 
@@ -95,7 +116,7 @@ cp policy/cedudo.cjar /opt/cedudo/cedudo.cjar
 **Important:** Most modern Linux systems don't allow setuid on interpreted scripts. You must use the compiled C wrapper:
 
 ```bash
-# Compile and install the wrapper
+# Run as your administrator account, WITHOUT sudo; the script uses sudo itself
 chmod +x install-wrapper.sh
 ./install-wrapper.sh
 ```
@@ -122,10 +143,10 @@ Should output `4755`
 The starter policies authorize by Linux group. Create `alice` in `developers` and `bob` in `operators`, each with a home directory and bash as the login shell (`useradd` otherwise defaults to `/bin/sh`):
 
 ```bash
-groupadd developers
-groupadd operators
-useradd -m -s /bin/bash -G developers alice
-useradd -m -s /bin/bash -G operators bob
+sudo groupadd developers
+sudo groupadd operators
+sudo useradd -m -s /bin/bash -G developers alice
+sudo useradd -m -s /bin/bash -G operators bob
 ```
 
 
@@ -144,10 +165,10 @@ In short, on the Ubuntu 24.04 VM:
 
 ```bash
 sudo tools/install-demo-service.sh
-sudo install -o root -g root -m 0644 operations.json /opt/cedudo/operations.json
 ```
 
-Students never run these.
+Students never run this. (The installed manifest is the one from step 4; the
+installer warns if it differs from the repository copy.)
 
 Operations in `operations.json`:
 
@@ -168,13 +189,14 @@ After installation, verify the setup by logging in as different Linux users and 
 every `restart` request when the `America/Chicago` hour is before 09:00 or at or
 after 17:00 (any day). `cedudo` reads the server clock; callers cannot override
 it. Run restart tests inside that window, or have the administrator set the VM
-clock (see `workshop-overview.md`). Outputs below assume the window.
+clock (see `docs/demo-service.md`). Outputs below assume the window.
 
 #### Test as alice
 
-To run this command you must be root. It will log you in as alice. 
+From your administrator account, start a login shell as alice:
+
 ```bash
-su - alice
+sudo -iu alice
 ```
 
 ```bash
@@ -201,10 +223,10 @@ cedudo restart-ssh
 
 #### Test as `bob`
 
-Now let's try as `bob`. Remember to exit the shell of `alice` so you are root again.
+Now let's try as `bob`. Type `exit` to leave alice's shell and return to your administrator account.
 
 ```bash
-su - bob
+sudo -iu bob
 ```
 
 ```bash
@@ -520,10 +542,10 @@ Do not share client secrets, access tokens, refresh tokens, or ID tokens when sh
 
 | Issue                                                     | Solution                                                                                                                                        |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cedudo[18629]: ERROR direct root invocation is not a workshop principal` | You must `su - alice` or `su - bob` to run the demo | 
-| `ModuleNotFoundError: No module named 'cedarling_python'` | Install into the venv the wrapper uses: `sudo /opt/cedudo/venv/bin/pip install cedarling-python`. Do not run `cedudo.py` with system `python3`. |
-| `must be installed as setuid root`                        | Most likely: setuid doesn't work on Python scripts. Use the C wrapper: `./install-wrapper.sh`                                                   |
-| Wrapper not found                                         | Compile it: `gcc -o cedudo cedudo-wrapper.c && sudo cp cedudo /opt/cedudo/cedudo && sudo chmod 4755 /opt/cedudo/cedudo`                         |
+| `cedudo[18629]: ERROR direct root invocation is not a workshop principal` | Run it as `alice` or `bob` (for example `sudo -iu alice`), not as root | 
+| `ModuleNotFoundError: No module named 'cedarling_python'` | Install into the venv the wrapper uses: `sudo /opt/cedudo/venv/bin/python3 -m pip install cedarling-python`. Do not run `cedudo.py` with system `python3`. |
+| `must be installed as setuid root`                        | Most likely: setuid doesn't work on Python scripts. Use the C wrapper: run `./install-wrapper.sh` as your administrator account (no `sudo`)                                                   |
+| Wrapper not found                                         | Run `./install-wrapper.sh` (no `sudo`), which compiles it and installs it as root with mode 4755                         |
 | `cannot inspect policy store`                             | Verify files are owned by root and in `/opt/cedudo/`                                                                                            |
 | `Cedarling initialization failed`                         | Check that `cedudo.cjar` exists and is valid. `metadata.json` must use `cedar_version` (see Cedarling policy store format).                     |
 | `invoking user not found`                                 | Ensure your user account exists in `/etc/passwd`                                                                                                |
@@ -544,7 +566,9 @@ sudo tools/uninstall-demo-service.sh
 Then remove Cedudo itself:
 
 ```bash
-sudo rm -rf /root/cedudo
 sudo rm -rf /opt/cedudo
 sudo rm -f /usr/local/bin/cedudo
 ```
+
+Your clone in the administrator's home directory (`~/cedudo`) is an ordinary
+directory; delete it yourself if you no longer need it.
