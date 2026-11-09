@@ -109,6 +109,31 @@ sudo install -o root -g root -m 0644 operations.json /opt/cedudo/operations.json
 sudo install -o root -g root -m 0644 policy/cedudo.cjar /opt/cedudo/cedudo.cjar
 ```
 
+`install` sets the owner, group and mode in the same step, so the files are
+never left with the permissions of your clone. Do not use plain `cp` here.
+
+**Everything cedudo trusts must stay under administrator control.** The
+setuid wrapper runs as root, and it executes the interpreter, the Python
+environment and the application code. Root then trusts the manifest and the
+policy archive to decide and define what runs. Anyone who can modify any of
+these can run arbitrary code as root or change what is authorized:
+
+| Item | Required state |
+| --- | --- |
+| `/opt/cedudo/` and `/opt/cedudo/venv/` (and everything in them) | owned by `root:root`, not group- or world-writable |
+| `/opt/cedudo/venv/bin/python3` and the system Python it points to (`/usr/bin/python3`) | owned and writable only by root |
+| `/opt/cedudo/cedudo.py` | `root:root 0644` |
+| `/opt/cedudo/operations.json` | `root:root 0644` |
+| `/opt/cedudo/cedudo.cjar` | `root:root 0644` |
+| `/opt/cedudo/cedudo` (setuid wrapper) | `root:root 4755`, set by `install-wrapper.sh` |
+| `/opt` and `/usr/local/bin` (parents) | owned by root, not group- or world-writable |
+
+Only `install-wrapper.sh` handles the wrapper and its symlink; it does not
+secure the other files. At runtime `cedudo` also refuses a manifest or
+archive that is not a root-owned regular file without group/world write
+access, but it does not check `cedudo.py` or the Python environment, so
+verify them yourself after installing (step 5).
+
 
 
 ### 5. Create C wrapper
@@ -121,7 +146,7 @@ chmod +x install-wrapper.sh
 ./install-wrapper.sh
 ```
 
-This creates `/opt/cedudo/cedudo` (a compiled binary with setuid) that executes the Python script, and also sets the correct file permissions.
+This creates `/opt/cedudo/cedudo` (a compiled binary with setuid, `root:root 4755`) and the `/usr/local/bin/cedudo` symlink. It secures only the wrapper; the other files were secured in step 4.
 
 
 Verify ownership is root 
@@ -136,6 +161,23 @@ stat -c '%a' /opt/cedudo/cedudo
 ```
 
 Should output `4755`
+
+Then verify the whole installation. As your administrator account:
+
+```bash
+# Parent directories and key files: expect root:root and no group/world write
+stat -c '%U:%G %a %n' /opt /opt/cedudo /opt/cedudo/cedudo.py \
+    /opt/cedudo/operations.json /opt/cedudo/cedudo.cjar /opt/cedudo/cedudo \
+    /usr/local/bin /usr/bin/python3
+
+# Should print NOTHING: anything under /opt/cedudo (venv included) that is
+# not root-owned or is group/world-writable. Symlinks are skipped; the venv
+# python3 symlink target is checked above.
+sudo find /opt/cedudo -not -type l \( ! -user root -o -perm /022 \) -print
+```
+
+If the `find` prints anything, fix it before continuing, for example with
+`sudo chown -R root:root /opt/cedudo` and `sudo chmod -R go-w /opt/cedudo`.
 
 
 ### 6. Create the demo users
