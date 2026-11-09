@@ -28,7 +28,7 @@ Do this the evening before so class time is not spent on downloads.
 
 ### 1. Get the workshop VM
 
-You need the prepared Ubuntu/Debian workshop image provided by the facilitators
+You need the prepared Ubuntu 24.04 workshop image provided by the facilitators
 (download link and checksum will be in the event materials). Import it into
 VirtualBox, VMware, UTM, or your usual hypervisor.
 

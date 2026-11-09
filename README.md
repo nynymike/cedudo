@@ -11,18 +11,33 @@ This document describes how to install `cedudo` as a setuid-root executable.
 
 ## Prerequisites
 
-- A Linux system (tested on Ubuntu/Debian)
-- Python 3.8 or later, including `venv` and `pip`
+- **Supported workshop environment: Ubuntu 24.04 LTS with systemd running,
+  using its system Python 3 (3.12).** The complete workshop installation
+  (Cedudo plus the `cedar-demo` service) is supported and tested only there.
+- Python 3 with `venv` and `pip` (the Ubuntu 24.04 packages below)
 - Git
 - GCC (to compile the C wrapper)
 - `cedarling_python` (the Janssen Cedarling Python bindings)
 - Root access for installation
-- On Ubuntu/Debian, install the build and Python tools with:
+- On Ubuntu 24.04, install the build and Python tools with:
 
 ```bash
 apt update
 apt install gcc python3 python3-venv python3-pip git
 ```
+
+### Environment support
+
+| Component | Requirement |
+| --- | --- |
+| Complete workshop (Cedudo + `cedar-demo.service`, exercises) | Ubuntu 24.04 with systemd running, system Python. `tools/install-demo-service.sh` refuses to run anywhere else. |
+| `cedudo.py` alone | Linux with a compiler, Python 3.9 or later (it imports `zoneinfo`, which Python 3.8 lacks) and a `cedarling-python` build for your platform. Not tested outside Ubuntu 24.04. |
+| `tools/cedudo-simulate.py`, `tests/` | Python 3.9 or later, any OS. No root or systemd. |
+
+An ordinary container (for example a default Docker image) does **not** meet
+the installer's requirements: it normally has no systemd running, so the
+`cedar-demo` service cannot be installed, started, or restarted. Use an Ubuntu
+24.04 VM.
 
 ## Installation Steps
 

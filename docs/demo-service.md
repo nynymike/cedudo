@@ -20,7 +20,10 @@ The unit file comments explain each restriction (`PrivateNetwork`,
 
 ## Assumptions about the VM
 
-- Ubuntu 24.04 with systemd, and `/usr/bin/systemctl`, `/usr/bin/journalctl`, `/usr/bin/python3`.
+- Ubuntu 24.04 LTS with systemd running as init and the system Python 3
+  (`/usr/bin/python3`), plus `/usr/bin/systemctl` and `/usr/bin/journalctl`.
+  This is the only supported environment; the installer refuses anything else.
+- An ordinary container without systemd does not qualify. Use a VM.
 - Cedudo is already installed (see `README.md` steps 1 to 6) with the starter policy deployed.
 - `alice` and `bob` are ordinary users: not in `sudo`, `admin`, `adm` or
   `systemd-journal`, and no polkit rule lets them manage services. That is why
