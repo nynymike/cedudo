@@ -15,7 +15,7 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 - **Policy_Store**: The .cjar file containing compiled Cedar policies, schema, and entities
 - **Operations_Manifest**: The root-owned operations.json file that binds operation IDs to fixed command arrays
 - **Workshop_Files**: The collection of policies, examples, tools, and documentation in ~/cedudo-workshop/
-- **Operation_ID**: A kebab-case identifier (e.g., "view-logs", "restart-demo") that references a fixed privileged operation
+- **Operation_ID**: A kebab-case identifier (e.g., "read-logs", "restart-demo") that references a fixed privileged operation
 - **Principal**: The Cedar entity representing the original Linux user identity with uid, gid, and group memberships
 - **Action**: The Cedar entity representing the privileged capability being requested (e.g., ReadLogs, Restart, OpenShell)
 - **Resource**: The Cedar entity representing the Linux resource being accessed (e.g., Service::"cedar-demo", Host::"workshop-vm")
@@ -50,9 +50,9 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 
 1. THE Operations_Manifest SHALL be a JSON file at /opt/cedudo/operations.json owned by root with permissions 0644
 2. THE Operations_Manifest SHALL define operation entries containing action, resource_type, resource_id, resource_attributes, and argv fields
-3. THE Operations_Manifest SHALL include "view-logs" operation mapping to journalctl with fixed service name and line count
-4. THE Operations_Manifest SHALL include "status-demo" operation mapping to systemctl status with fixed service name
-5. THE Operations_Manifest SHALL include "restart-demo" operation mapping to systemctl restart with fixed service name
+3. THE Operations_Manifest SHALL include "read-logs" operation mapping to /usr/bin/journalctl with the fixed unit cedar-demo.service, a bounded line count, and paging disabled (no follow mode)
+4. THE Operations_Manifest SHALL include "restart-demo" operation (Cedar action "restart" on Linux::Service::"cedar-demo") mapping to /usr/bin/systemctl --no-ask-password --no-pager restart cedar-demo.service
+5. THE Operations_Manifest SHALL include "restart-ssh" operation (Cedar action "restart" on Linux::Service::"ssh", critical) whose execution is SIMULATED and never restarts SSH
 6. THE Operations_Manifest SHALL NOT include "root-shell" operation (deliberately excluded for security demonstration)
 7. WHEN Cedudo receives an Operation_ID, THE Cedudo SHALL validate that the argv array contains only the executable path and fixed arguments with no user-supplied values
 8. WHEN Cedudo validates an executable path, THE Cedudo SHALL verify it is an absolute path, owned by root, not group/world writable, and has execute permission
@@ -163,7 +163,7 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 2. WHEN deploy-policy.sh is invoked, THE script SHALL validate cedudo.cjar format
 3. WHEN deploy-policy.sh is invoked, THE script SHALL copy ~/cedudo-workshop/policy/cedudo.cjar to /opt/cedudo/cedudo.cjar with sudo
 4. WHEN deploy-policy.sh is invoked, THE script SHALL set root ownership and 0644 permissions on /opt/cedudo/cedudo.cjar
-5. WHEN alice runs "cedudo view-logs", THE Cedudo SHALL permit the operation (alice is in developers group)
+5. WHEN alice runs "cedudo read-logs", THE Cedudo SHALL permit the operation (alice is in developers group)
 6. WHEN alice runs "cedudo restart-demo" with starter policies, THE Cedudo SHALL deny the operation (alice is not in operators group)
 7. WHEN bob runs "cedudo restart-demo" locally with starter policies, THE Cedudo SHALL permit the operation (bob is in operators group and local_console is true)
 8. WHEN bob runs "cedudo restart-demo" over SSH with starter policies, THE Cedudo SHALL deny the operation (local_console is false)
@@ -287,12 +287,14 @@ This document specifies the requirements for a self-contained 80-minute hands-on
 #### Acceptance Criteria
 
 1. THE Demo_Service SHALL be a systemd service named cedar-demo.service
-2. THE Demo_Service SHALL write a timestamp to the systemd journal at regular intervals
-3. THE Demo_Service SHALL have no external network dependencies
+2. THE Demo_Service SHALL write a startup message and periodic heartbeat messages to the systemd journal, each carrying a startup_id unique to that instance
+3. THE Demo_Service SHALL open no network ports and have no external dependencies
 4. THE Demo_Service SHALL contain no important data or state
 5. WHEN Demo_Service is restarted, THE Demo_Service SHALL restart without errors
 6. WHEN Demo_Service is restarted repeatedly, THE Demo_Service SHALL not degrade system performance
-7. THE Demo_Service SHALL run as a non-root user with minimal privileges
+7. THE Demo_Service SHALL run as the dedicated unprivileged cedar-demo account with no login shell, and its executable and unit file SHALL be root-owned and not writable by students
+8. THE Demo_Service SHALL shut down cleanly on SIGTERM
+9. THE install and uninstall scripts SHALL be safe to rerun, and uninstall SHALL remove only resources created for this demo
 
 ### Requirement 20: Workshop Documentation
 

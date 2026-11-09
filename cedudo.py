@@ -105,11 +105,20 @@ OPERATIONS
     workshop manifest defines:
 
         read-logs      read-logs on Service "cedar-demo"  (noncritical)
+                       REAL: last 20 journal entries of cedar-demo.service
         restart-demo   restart   on Service "cedar-demo"  (noncritical)
+                       REAL: systemctl restart cedar-demo.service
         restart-ssh    restart   on Service "ssh"         (critical)
+                       SIMULATED: prints a message; ssh is never restarted
 
-    Run `cedudo <operation-id>`, for example `cedudo read-logs`. An id must
-    match [a-z][a-z0-9-]{0,63}.
+    Run `cedudo <operation-id>`, for example `cedudo restart-demo`. An id must
+    match [a-z][a-z0-9-]{0,63}. Several operations can share one Cedar action
+    (restart-demo and restart-ssh both use `restart`).
+
+    An id that is not in the manifest (for example `root-shell`) is rejected
+    before Cedar runs. A permit only means Cedar allowed the request: the
+    fixed command can still fail, and that failure is the command's own.
+    Check the result, e.g. `systemctl show cedar-demo.service -p InvocationID`.
 
 THE AUTHORIZATION REQUEST
     Every run builds one Cedar request of principal / action / resource /

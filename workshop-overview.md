@@ -14,7 +14,7 @@ By the end you will:
 - Model a Linux privilege as a Cedar **principal / action / resource / context** request
 - Test permit and deny decisions in Tarp before touching the VM
 - Change a Cedar policy and reload the shared policy store
-- See the same policy control a real `systemctl` / `journalctl` operation
+- See the same policy control a real `systemctl restart` / `journalctl` operation on `cedar-demo.service`
 - Try common bypasses and see why they fail
 
 Read this document from top to bottom: prepare the day before, show up ready,
@@ -37,7 +37,9 @@ VM already has:
 
 - Tarp (browser extension / package)
 - Cedarling Python bindings
-- The `cedar-demo` systemd service
+- The `cedar-demo` systemd service (a real, harmless heartbeat logger run by an
+  unprivileged `cedar-demo` account; installed by an administrator; see
+  [`docs/demo-service.md`](docs/demo-service.md))
 - `cedudo` installed under `/opt/cedudo/` (includes the C wrapper for setuid support)
 - Workshop files under `~/cedudo-workshop/` (or this repository checked out there)
 
@@ -107,7 +109,7 @@ systemctl status cedar-demo --no-pager
 ```
 
 You should see yourself as `alice` in the `developers` group, and
-`cedar-demo.service` active.
+`cedar-demo.service` active (running as the `cedar-demo` user).
 
 4. Open a second tab or window for this README so you can copy commands.
 5. Wait for the facilitator intro (next section). Do not race ahead into policy
@@ -150,53 +152,192 @@ list. You never pass shell command strings to `cedudo`.
 
 ---
 
-### Minutes 8–18 — Inspect the VM
+### Minutes 8–18 — Exercise: restart a real service
 
-Still as **alice**, run:
+`cedar-demo.service` is a real systemd service. It runs as the unprivileged
+`cedar-demo` user, opens no network ports, and writes a startup line and a
+heartbeat every 15 seconds to the journal. Every line carries a `startup_id`
+that is unique to one run of the service, so you can tell one instance from the
+next. systemd also assigns each run an `InvocationID`.
+
+**VM assumptions (set up by the administrator, not by you):**
+
+- `alice` and `bob` are ordinary users. They are not in `sudo`, `admin`, `adm`
+  or `systemd-journal`, and no polkit rule lets them manage services.
+- The deployed policy is the starter policy, including `forbid-restart-outside-hours`.
+- The VM clock is inside the restart window (see "Business hours" below).
+
+**Business hours.** `forbid-restart-outside-hours` forbids every `restart`
+request when the hour in `America/Chicago` is before 09:00 or from 17:00 on, on
+any day of the week (weekends are not special in this policy). It does not
+affect `read-logs`. `cedudo` reads the server clock itself, and the caller
+cannot supply or override it, so the policy is not weakened for the exercise.
+Check the window before you start:
 
 ```bash
-id
-systemctl status cedar-demo --no-pager
-cedudo read-logs
-cedudo restart-demo
-cedudo restart-ssh
+TZ=America/Chicago date '+%A %H:%M'     # restart is possible from 09:00 to 16:59
+cedudo explain restart-demo             # dry run: shows context "hour" and the decision
 ```
 
-Expected with the starter policies:
+If it is outside the window, tell a facilitator, who can pin the VM clock
+(administrator only; see [`docs/demo-service.md`](docs/demo-service.md)).
 
-| Command | Result |
-|---------|--------|
-| `cedudo read-logs` | **PERMIT** — alice is in `developers` |
-| `cedudo restart-demo` | **DENY** — alice is not in `operators` |
-| `cedudo restart-ssh` | **DENY** — `ssh` is a critical service (forbid policy) |
+Outside the window the exercise still works, with a different result: `bob`'s
+restart is denied by `forbid-restart-outside-hours`, which is itself worth
+seeing. Without VM access, `tools/cedudo-simulate.py` answers "what if it were
+10:00?" without running anything.
+
+#### Steps (start as alice)
+
+1. **Inspect the service.**
+
+   ```bash
+   systemctl status cedar-demo --no-pager
+   systemctl show cedar-demo.service -p User -p ActiveState -p SubState -p MainPID -p InvocationID
+   cedudo read-logs
+   ```
+
+   Expect `User=cedar-demo`, `ActiveState=active`, `SubState=running`. Write
+   down the `InvocationID` and the `startup_id` from the journal output
+   (call them **A**). Status and `show` need no privileges.
+
+2. **Identify your groups.**
+
+   ```bash
+   id
+   ```
+
+   Alice is in `developers`. She is not in `operators`, `sudo`, or `adm`.
+
+3. **Predict before you run.** Fill this in, then check it with
+   `cedudo explain restart-demo` (a dry run that never executes anything):
+
+   | Question | Your prediction |
+   |----------|-----------------|
+   | May `systemctl restart` work for alice directly? | |
+   | Does any policy permit alice to `restart`? | |
+   | Does `cedudo read-logs` permit alice? | |
+
+   Starter policies: `developers-observe-demo` permits `read-logs` for
+   `developers` and `operators`. Only `operators-restart` permits `restart`.
+   Cedar is default-deny, so alice has no matching permit.
+
+4. **Try a direct restart.** `--no-ask-password` makes systemd fail instead of
+   waiting for an administrator password:
+
+   ```bash
+   systemctl --no-ask-password --no-pager restart cedar-demo.service
+   echo "exit=$?"
+   ```
+
+   Expected: `Failed to restart cedar-demo.service: Interactive authentication required.`
+   and a non-zero exit. The `InvocationID` is still **A**.
+   *Responsible layer: Linux permissions* (systemd/polkit). `cedudo` was not involved.
+
+5. **Request the restart through Cedudo.**
+
+   ```bash
+   cedudo restart-demo
+   echo "exit=$?"
+   ```
+
+   Expected: a `DENY` line with `policies=[]` and `cedudo: denied: restart-demo`;
+   exit `77`. Check that `InvocationID` is still **A**.
+   *Responsible layer: Cedar authorization.* The manifest lookup succeeded
+   (the operation exists), but no policy permitted it, so nothing was executed.
+
+6. **Switch to bob and restart.** Bob is in `operators` (the facilitator will
+   give you the password for `su`):
+
+   ```bash
+   su - bob
+   cedudo explain restart-demo     # expect ALLOW, determining id: operators-restart
+   cedudo restart-demo
+   echo "exit=$?"
+   ```
+
+   Expected inside the window: a `PERMIT` line with
+   `policies=['operators-restart']`, no output from the restart itself, exit `0`.
+   *Responsible layers:* manifest lookup found the exact command, Cedar permitted
+   it, and command execution ran
+   `/usr/bin/systemctl --no-ask-password --no-pager restart cedar-demo.service` as root.
+
+   Compare with step 1:
+
+   ```bash
+   systemctl show cedar-demo.service -p InvocationID -p ActiveState
+   ```
+
+   The `InvocationID` is now different from **A**, and `ActiveState=active`.
+
+7. **Read the journal through Cedudo.**
+
+   ```bash
+   cedudo read-logs
+   ```
+
+   Expect the old instance's `shutdown startup_id=<A> reason=SIGTERM` line, systemd's
+   stop/start lines, then `startup startup_id=<B>` with a new id, followed by
+   heartbeats carrying **B**. Students cannot read the system journal directly;
+   `cedudo` runs a fixed `journalctl` for `cedar-demo.service` only.
+
+8. **Correlate with the policy IDs.** Every run prints one audit line from
+   `cedudo` (`PERMIT` or `DENY`, user, groups, operation, `policies=[...]`).
+   Match them to the table below.
+
+| What you ran | Decision and determining policy IDs | Effect on the service |
+|--------------|-------------------------------------|-----------------------|
+| alice `read-logs` | PERMIT `developers-observe-demo` | Journal lines printed |
+| alice `restart-demo` | DENY, `policies=[]` (default-deny) | None; `InvocationID` unchanged |
+| bob `restart-demo`, in hours | PERMIT `operators-restart` | New `InvocationID` and `startup_id` |
+| bob `restart-demo`, outside hours | DENY `forbid-restart-outside-hours` | None; `InvocationID` unchanged |
+| anyone `restart-ssh` | DENY `forbid-critical-restart` (plus `forbid-restart-outside-hours` outside hours) | None |
 
 Each CLI operation ID differs from its Cedar action: both `restart-demo` and
 `restart-ssh` use the Cedar action `restart`, on different resources:
 
-| Operation ID | Cedar action | Resource |
-|--------------|--------------|----------|
-| `read-logs` | `read-logs` | `Linux::Service::"cedar-demo"` |
-| `restart-demo` | `restart` | `Linux::Service::"cedar-demo"` (`critical: false`) |
-| `restart-ssh` | `restart` | `Linux::Service::"ssh"` (`critical: true`) |
+| Operation ID | Cedar action | Resource | Execution |
+|--------------|--------------|----------|-----------|
+| `read-logs` | `read-logs` | `Linux::Service::"cedar-demo"` | Real: last 20 journal entries of `cedar-demo.service` |
+| `restart-demo` | `restart` | `Linux::Service::"cedar-demo"` (`critical: false`) | Real: `systemctl restart cedar-demo.service` |
+| `restart-ssh` | `restart` | `Linux::Service::"ssh"` (`critical: true`) | **Simulated**: prints a message; never restarts SSH |
 
-Confirm that direct admin commands cannot be run:
+`restart-ssh` still goes through a real Cedar decision, which is why it is in
+the exercise: try it as alice and bob and read the policy IDs. Its execution
+stays simulated so that no one can lock the VM out of SSH, even if a later
+policy change permits it.
+
+Two operations that are *not* the same thing:
+
+- `cedudo root-shell` is **absent from the manifest**. It is rejected with
+  `unknown operation` before Cedar runs, so there is no policy ID to read.
+- Tarp's `examples/root-shell.json` is a separate demonstration. It sends the
+  Cedar action `open-shell` straight to the policy store, where
+  `forbid-open-shell` denies it. That shows the Cedar prohibition; it does not
+  go through `cedudo`.
+
+#### An authorized restart can still fail
+
+`PERMIT` only means Cedar allowed the request. `cedudo` then replaces itself
+with the fixed command, so the result you see is that command's result. Tell the
+cases apart by the message and the exit code:
+
+| What you see | Layer | Meaning |
+|--------------|-------|---------|
+| `unknown operation: X`, exit 77, no audit line | Manifest lookup | The ID is not in `operations.json` |
+| `DENY ... policies=[...]`, `denied: X`, exit 77 | Cedar | A policy forbade it, or none permitted it |
+| `ERROR ... untrusted executable` / `cannot inspect operation executable`, exit 78 | Manifest validation | The manifest entry is broken; stops before Cedar |
+| `PERMIT ...` then `Failed to restart cedar-demo.service: ...`, non-zero exit | Command execution | Authorized, but systemd could not do it (for example the unit is missing or failed to start) |
+| `PERMIT ...` then `authorized command could not be executed`, exit 70 | Command execution | The executable could not be started |
+
+After any `PERMIT`, confirm the outcome rather than assuming it:
 
 ```bash
-systemctl restart cedar-demo
+systemctl is-active cedar-demo.service
+systemctl show cedar-demo.service -p InvocationID
 ```
 
-That should be **denied** because you don't have root privileges. Only `cedudo` can elevate via setuid.
-
-If the facilitator asks you to try **bob** (local console session):
-
-```bash
-su - bob
-# or: ssh bob@localhost   (then local_console may be false — see later)
-cedudo restart-demo
-```
-
-As bob on a **local** console, `cedudo restart-demo` should **PERMIT**. `cedudo restart-ssh` should
-still **DENY** (critical service). Switch back to alice when asked.
+An unchanged `InvocationID` after a `PERMIT` means the restart did not happen.
 
 ---
 
@@ -294,13 +435,17 @@ Note: The deploy script still uses `sudo` for administrative tasks like copying 
 As **alice** on a local console:
 
 ```bash
+systemctl show cedar-demo.service -p InvocationID
 cedudo restart-demo
-systemctl status cedar-demo --no-pager
+systemctl show cedar-demo.service -p InvocationID
 ```
 
-Alice should now receive **PERMIT**, and `cedar-demo` should restart. This is
-the central moment of the workshop: the policy you tested in the browser now
-controls a real privileged operation.
+Inside the business-hours window, alice should now receive **PERMIT**
+(`policies=['developers-restart-noncritical-local']`) and the `InvocationID`
+changes. This is the central moment of the workshop: the policy you tested in
+the browser now controls a real privileged operation. Outside the window,
+`forbid-restart-outside-hours` still wins and the `InvocationID` stays the same.
+Over SSH (`local_console` false) the challenge policy does not match either.
 
 ---
 
@@ -314,17 +459,21 @@ cedudo "restart-demo; /bin/bash"
 cedudo restart-demo --service ssh
 cedudo restart-ssh
 cedudo root-shell
-systemctl restart cedar-demo
+systemctl --no-ask-password restart cedar-demo
 ```
 
 Why they fail:
 
 - `cedudo` accepts only a kebab-case **operation ID**, not a command path
 - Trailing arguments (like `--service ssh`) are logged and ignored; argv comes from the
-  root-owned manifest. `cedudo restart-ssh` is a separate operation that Cedar
-  **forbids** because `ssh` is marked `critical`
+  root-owned manifest. If `restart-demo` is permitted, it restarts `cedar-demo.service`
+  and nothing else; the `ssh` argument has no effect
+- `cedudo restart-ssh` is a separate operation that Cedar **forbids** because
+  `ssh` is marked `critical`. Even if it were permitted it only prints a
+  simulated message
 - `root-shell` is not in `operations.json` (rejected before Cedar runs)
-- `systemctl` runs without root privileges since cedudo is the only setuid executable
+- Direct `systemctl restart` runs without root privileges, so systemd refuses it
+  (Linux permissions; `cedudo` is the only setuid executable)
 - You cannot rewrite `/opt/cedudo/operations.json` or `cedudo.cjar` without root access
 
 A Cedar **permit** never lets the caller change which binary runs.
@@ -413,10 +562,12 @@ privilege path.
 | Tarp will not load policies | Is `python3 ../tools/serve-policy.py` still running? URL exactly `http://127.0.0.1:8000/cedudo.cjar`? |
 | CORS errors in the browser | Use the provided `serve-policy.py` (it sends CORS headers) |
 | `Cedarling initialization failed` | `/opt/cedudo/cedudo.cjar` exists, owned by root, not group/world writable; `metadata.json` uses `cedar_version` (not `policy_engine`) |
-| `unknown operation` | Only IDs in `operations.json` are valid (`read-logs`, `restart`, `restart-ssh`) |
+| `unknown operation` | Only IDs in `operations.json` are valid (`read-logs`, `restart-demo`, `restart-ssh`) |
 | `operation must match [a-z]…` | Operation IDs are kebab-case only—no paths or shell metacharacters |
 | `must be installed as setuid root` | The C wrapper `/opt/cedudo/cedudo` must have setuid bit. Run: `sudo chmod 4755 /opt/cedudo/cedudo` |
 | Permission denied when running cedudo | The wrapper binary must be executable and have setuid bit. See README.md for C wrapper setup |
+| `cedudo restart-demo` says PERMIT but nothing changed | Compare `InvocationID` before and after; run `systemctl status cedar-demo`. Administrator: `sudo tools/test-demo-service.sh` |
+| Restart denied for bob in the middle of the day | `TZ=America/Chicago date`; `forbid-restart-outside-hours` uses Central time |
 | Policies changed but VM behavior did not | Rebuild with `./tools/build-cjar.sh`, then deploy with root privileges |
 
 Reset the VM to the starter state:
@@ -435,7 +586,12 @@ Repository layout if you want to explore later:
 cedudo.py                 Python enforcement script
 cedudo-wrapper.c          C wrapper for setuid support
 install-wrapper.sh        Script to build and install the wrapper
-operations.json           Operation ID → fixed argv
+operations.json           Operation ID → fixed argv (real journalctl/systemctl; restart-ssh simulated)
+demo-service/             cedar-demo program and systemd unit
+tools/install-demo-service.sh    Administrator: install and start the demo service
+tools/uninstall-demo-service.sh  Administrator: remove only the demo service
+tools/test-demo-service.sh       Administrator: integration checks on the VM
+tests/test_static.py      Static checks (no root or systemd needed)
 policy/store/             Cedarling policy store (edit here)
 policy/cedudo.cjar        Packaged store (ZIP)
 examples/                 Tarp unsigned request samples

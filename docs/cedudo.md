@@ -93,11 +93,17 @@ It accepts synthetic identity flags (`--user`, `--uid`, `--gid`, `--groups`,
 Operation ids are defined in `/opt/cedudo/operations.json`. The shipped
 workshop manifest defines:
 
-| Operation id | Action | Resource | Critical |
-| --- | --- | --- | --- |
-| `read-logs` | `read-logs` | `Linux::Service::"cedar-demo"` | no |
-| `restart-demo` | `restart` | `Linux::Service::"cedar-demo"` | no |
-| `restart-ssh` | `restart` | `Linux::Service::"ssh"` | yes |
+| Operation id | Action | Resource | Critical | Execution |
+| --- | --- | --- | --- | --- |
+| `read-logs` | `read-logs` | `Linux::Service::"cedar-demo"` | no | Real: `journalctl --unit=cedar-demo.service --lines=20 --no-pager` |
+| `restart-demo` | `restart` | `Linux::Service::"cedar-demo"` | no | Real: `systemctl restart cedar-demo.service` |
+| `restart-ssh` | `restart` | `Linux::Service::"ssh"` | yes | Simulated: prints a message, never restarts SSH |
+
+`root-shell` is deliberately absent from the manifest, so it is rejected before
+Cedar runs. The Tarp example `examples/root-shell.json` is separate: it sends
+the Cedar action `open-shell` to the policy store, where `forbid-open-shell`
+denies it. A `PERMIT` only means Cedar allowed the request; the fixed command
+can still fail, so verify the result (for example the service's `InvocationID`).
 
 Run an operation by id:
 

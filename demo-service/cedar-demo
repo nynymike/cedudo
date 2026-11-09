@@ -1,0 +1,59 @@
+#!/usr/bin/python3
+"""cedar-demo: a harmless service for the Cedudo workshop.
+
+It does nothing except write to its standard output, which systemd sends to
+the journal:
+
+  * one startup line carrying a startup_id that is unique to this process,
+  * a heartbeat line every HEARTBEAT_SECONDS (also carrying the startup_id),
+  * one shutdown line when systemd sends SIGTERM (stop or restart).
+
+Students compare the startup_id (and systemd's InvocationID) before and after
+a restart to prove that a new instance really started.
+
+It opens no sockets, reads no input and touches no files.
+"""
+
+import os
+import signal
+import sys
+import threading
+import uuid
+
+HEARTBEAT_SECONDS = 15
+
+
+def log(message):
+    # Flush every line so the journal sees it immediately.
+    print(f"cedar-demo {message}", flush=True)
+
+
+def run(heartbeat_seconds=HEARTBEAT_SECONDS, max_beats=None):
+    """Run until SIGTERM/SIGINT. Returns the process exit status (0)."""
+    startup_id = uuid.uuid4().hex[:12]
+    stop = threading.Event()
+    received = []
+
+    def request_stop(signum, _frame):
+        received.append(signal.Signals(signum).name)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+
+    log(f"startup startup_id={startup_id} pid={os.getpid()} uid={os.getuid()}")
+
+    beat = 0
+    while not stop.wait(heartbeat_seconds):
+        beat += 1
+        log(f"heartbeat startup_id={startup_id} seq={beat}")
+        if max_beats is not None and beat >= max_beats:
+            break
+
+    reason = received[0] if received else "max_beats"
+    log(f"shutdown startup_id={startup_id} reason={reason}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run())

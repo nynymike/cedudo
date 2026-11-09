@@ -59,7 +59,7 @@ graph TB
     Tarp -->|loads .cjar via URL| PolicyServer
     Tarp -->|evaluates unsigned requests| Cedarling
     
-    Alice -->|cedudo view-logs| Cedudo
+    Alice -->|cedudo read-logs| Cedudo
     Bob -->|cedudo restart-demo| Cedudo
     Cedudo -->|setuid elevation to root| Cedudo
     Cedudo -->|reads operation| OpManifest
@@ -344,8 +344,9 @@ Or use the provided installation script:
 **Structure**:
 ```json
 {
-  "view-logs": {
-    "action": "Linux::Action::\"ReadLogs\"",
+  "read-logs": {
+    "action_type": "Linux::Action",
+    "action_id": "read-logs",
     "resource_type": "Linux::Service",
     "resource_id": "cedar-demo",
     "resource_attributes": {
@@ -354,15 +355,15 @@ Or use the provided installation script:
     },
     "argv": [
       "/usr/bin/journalctl",
-      "-u",
-      "cedar-demo",
-      "-n",
-      "20",
-      "--no-pager"
+      "--unit=cedar-demo.service",
+      "--lines=20",
+      "--no-pager",
+      "--output=short-iso"
     ]
   },
   "restart-demo": {
-    "action": "Linux::Action::\"Restart\"",
+    "action_type": "Linux::Action",
+    "action_id": "restart",
     "resource_type": "Linux::Service",
     "resource_id": "cedar-demo",
     "resource_attributes": {
@@ -371,8 +372,24 @@ Or use the provided installation script:
     },
     "argv": [
       "/usr/bin/systemctl",
+      "--no-ask-password",
+      "--no-pager",
       "restart",
-      "cedar-demo"
+      "cedar-demo.service"
+    ]
+  },
+  "restart-ssh": {
+    "action_type": "Linux::Action",
+    "action_id": "restart",
+    "resource_type": "Linux::Service",
+    "resource_id": "ssh",
+    "resource_attributes": {
+      "environment": "workshop",
+      "critical": true
+    },
+    "argv": [
+      "/usr/bin/echo",
+      "SIMULATED: ssh would be restarted here (restart-ssh never runs systemctl)"
     ]
   }
 }
@@ -387,7 +404,7 @@ Or use the provided installation script:
 6. `resource_attributes` optional, defaults to empty object if not provided
 
 **Security Properties**:
-- Operation IDs are semantic names (view-logs, restart-demo), not command strings
+- Operation IDs are semantic names (read-logs, restart-demo), not command strings
 - All command arguments are fixed at manifest creation time
 - No user-supplied values appear in executed commands
 - Manifest is validated before any authorization evaluation
@@ -590,40 +607,14 @@ python3 ../tools/serve-policy.py
 
 **Purpose**: Harmless systemd service for safe privilege operation demonstrations.
 
-**Implementation**:
-```ini
-[Unit]
-Description=Cedar Workshop Demo Service
-After=network.target
-
-[Service]
-Type=simple
-User=nobody
-ExecStart=/usr/local/bin/cedar-demo-service.sh
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Service Script** (/usr/local/bin/cedar-demo-service.sh):
-```bash
-#!/bin/bash
-while true; do
-    echo "Cedar demo service running at $(date)"
-    sleep 30
-done
-```
+**Implementation**: see `demo-service/cedar-demo` (Python program, installed to `/opt/cedar-demo/cedar-demo`, root:root 0755) and `demo-service/cedar-demo.service` (installed to `/etc/systemd/system/`, root:root 0644). The unit runs it as the `cedar-demo` system account (no login shell), uses `PrivateNetwork=yes`, `NoNewPrivileges=yes`, `ProtectSystem=strict`, and a syscall filter, and is commented setting by setting.
 
 **Properties**:
-- Runs as unprivileged user (nobody)
-- No network dependencies
-- No persistent state
-- Safe to restart repeatedly
-- Writes timestamps to journal
-- No data loss on restart
-
+- Logs `startup`, `heartbeat`, and `shutdown` lines, each with a unique `startup_id`
+- Shuts down cleanly on SIGTERM (stop or restart)
+- No network ports, no persistent state
+- Installed and removed by `tools/install-demo-service.sh` and `tools/uninstall-demo-service.sh`; verified on the VM by `tools/test-demo-service.sh`
+- `restart-ssh` is the only simulated operation; it prints a message and never touches SSH
 
 ## Data Models
 

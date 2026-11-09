@@ -1,0 +1,52 @@
+[Unit]
+Description=Cedar demo service (harmless heartbeat logger for the Cedudo workshop)
+
+[Service]
+# exec: systemd reports "started" only after the program really launched.
+Type=exec
+ExecStart=/opt/cedar-demo/cedar-demo
+# stdout/stderr go to the journal; the identifier makes `journalctl -t` work.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cedar-demo
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# Dedicated unprivileged account with no login shell (created by the installer).
+User=cedar-demo
+Group=cedar-demo
+
+# Stop/restart sends SIGTERM; the program logs a shutdown line and exits 0.
+# If it ignores SIGTERM, systemd kills it after 10 seconds.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# Restart only after a crash, never after a clean stop or a Cedudo restart.
+Restart=on-failure
+RestartSec=2
+
+# --- Sandboxing: enough to be meaningful, short enough to read. ---
+# No network at all: the service gets only a private loopback interface.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+# Cannot gain privileges (setuid, file capabilities) and holds no capabilities.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+# Read-only OS, no access to home directories, private /tmp and /dev.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+# Block kernel tuning, module loading, and other risky kernel interfaces.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+# Allow only the system calls ordinary services need.
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+# Misc. hardening that costs nothing for this program.
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

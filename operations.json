@@ -9,8 +9,11 @@
       "critical": false
     },
     "argv": [
-      "/usr/bin/echo",
-      "Access granted to read logs"
+      "/usr/bin/journalctl",
+      "--unit=cedar-demo.service",
+      "--lines=20",
+      "--no-pager",
+      "--output=short-iso"
     ]
   },
   "restart-demo": {
@@ -23,8 +26,11 @@
       "critical": false
     },
     "argv": [
-      "/usr/bin/echo",
-      "Cedar demo is restarting..."
+      "/usr/bin/systemctl",
+      "--no-ask-password",
+      "--no-pager",
+      "restart",
+      "cedar-demo.service"
     ]
   },
   "restart-ssh": {
@@ -38,7 +44,7 @@
     },
     "argv": [
       "/usr/bin/echo",
-      "ssh is restarting..."
+      "SIMULATED: ssh would be restarted here (restart-ssh never runs systemctl)"
     ]
   }
 }

@@ -120,9 +120,40 @@ useradd -m -s /bin/bash -G operators bob
 | **bob**   | `operators`  | May observe the demo and restart **noncritical** services when `intruder_risk_level` is `low` |
 
 
-### 7. Testing
+### 7. Install the demo service (administrator)
+
+`read-logs` and `restart-demo` act on a real, harmless systemd service,
+`cedar-demo.service`. Installing, validating, and removing it are administrator
+tasks documented separately in [`docs/demo-service.md`](docs/demo-service.md).
+In short, on the Ubuntu 24.04 VM:
+
+```bash
+sudo tools/install-demo-service.sh
+sudo install -o root -g root -m 0644 operations.json /opt/cedudo/operations.json
+```
+
+Students never run these.
+
+Operations in `operations.json`:
+
+| Operation | Cedar action / resource | Execution |
+| --- | --- | --- |
+| `read-logs` | `read-logs` on `Linux::Service::"cedar-demo"` | **Real**: `/usr/bin/journalctl --unit=cedar-demo.service --lines=20 --no-pager --output=short-iso` |
+| `restart-demo` | `restart` on `Linux::Service::"cedar-demo"` | **Real**: `/usr/bin/systemctl --no-ask-password --no-pager restart cedar-demo.service` |
+| `restart-ssh` | `restart` on `Linux::Service::"ssh"` (critical) | **Simulated**: prints a message; SSH is never restarted |
+
+The caller supplies only the operation ID; extra arguments are logged and
+ignored.
+
+### 8. Testing
 
 After installation, verify the setup by logging in as different Linux users and trying to run cedudo to do different things.
+
+**Business hours:** the deployed `forbid-restart-outside-hours` policy denies
+every `restart` request when the `America/Chicago` hour is before 09:00 or at or
+after 17:00 (any day). `cedudo` reads the server clock; callers cannot override
+it. Run restart tests inside that window, or have the administrator set the VM
+clock (see `workshop-overview.md`). Outputs below assume the window.
 
 #### Test as alice
 
@@ -136,8 +167,8 @@ cedudo read-logs
 ```
 
 
->cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
->Access granted to read logs
+>cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/journalctl', '--unit=cedar-demo.service', '--lines=20', '--no-pager', '--output=short-iso']
+>(up to 20 recent `cedar-demo` journal entries)
 
 ```bash
 cedudo restart-demo
@@ -164,17 +195,17 @@ su - bob
 ```bash
 cedudo read-logs
 ```
->cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/echo', 'Access granted to read logs']
+>cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/journalctl', '--unit=cedar-demo.service', '--lines=20', '--no-pager', '--output=short-iso']
 
->Access granted to read logs
+>(up to 20 recent `cedar-demo` journal entries)
 
 ```bash
 cedudo restart-demo
 ```
 
->cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/echo', 'Cedar demo is restarting...']
+> cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/systemctl', '--no-ask-password', '--no-pager', 'restart', 'cedar-demo.service']
 
->Cedar demo is restarting...
+>(no output; confirm with `systemctl show cedar-demo.service -p InvocationID`, which changes after the restart)
 
 ```bash
 cedudo restart-ssh
@@ -485,6 +516,17 @@ Do not share client secrets, access tokens, refresh tokens, or ID tokens when sh
 | Script works for root but not regular users               | Check that `/opt/cedudo/cedudo` (not cedudo.py) has the setuid bit: `stat -c '%a' /opt/cedudo/cedudo` Should be '4755'                                                |
 
 ## Uninstallation
+
+Remove the demo service first (administrator). It stops and disables the
+service and removes only the unit, `/opt/cedar-demo`, and the `cedar-demo`
+account if the installer created it. It does not touch `/opt/cedudo`, `alice`,
+`bob`, or the `developers`/`operators` groups:
+
+```bash
+sudo tools/uninstall-demo-service.sh
+```
+
+Then remove Cedudo itself:
 
 ```bash
 sudo rm -rf /root/cedudo
