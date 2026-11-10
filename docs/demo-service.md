@@ -53,8 +53,12 @@ systemctl status cedar-demo --no-pager
 ## Validate (root)
 
 ```bash
-sudo tools/test-demo-service.sh
+sudo tools/test-demo-service.sh            # add --strict to fail on skips
 ```
+
+Read the final `RESULT:` line. The script exits 0 for `PASSED WITH SKIPS`,
+which is not a full pass: outside the business-hours window it skips the
+allowed-restart check. `--strict` turns any skip into a failure.
 
 It checks ownership and permissions, no listening ports, journal output, a
 denied and an allowed Cedudo restart (`InvocationID` and `startup_id` compared

@@ -246,14 +246,18 @@ seeing. Without VM access, `tools/cedudo-simulate.py` answers "what if it were
    *Responsible layer: Cedar authorization.* The manifest lookup succeeded
    (the operation exists), but no policy permitted it, so nothing was executed.
 
-6. **Switch to bob and restart.** Bob is in `operators` (the facilitator will
-   give you the password for `su`):
+6. **Restart as bob.** Bob is in `operators`. The accounts have no passwords by
+   default, so a facilitator (administrator) runs this block for you, or hands
+   you a password if they set one up (optional step in `README.md`), in which
+   case use `su - bob` and `exit` to return:
 
    ```bash
-   su - bob
+   sudo -iu bob
+   id
    cedudo explain restart-demo     # expect ALLOW, determining id: operators-restart
    cedudo restart-demo
    echo "exit=$?"
+   exit
    ```
 
    Expected inside the window: a `PERMIT` line with

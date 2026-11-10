@@ -186,6 +186,43 @@ class RequirementsTests(unittest.TestCase):
         self.assertIn("does **not** parse the policies", readme)
 
 
+class VerificationPathTests(unittest.TestCase):
+    def test_readme_leads_through_all_three_checks(self):
+        readme = (ROOT / "README.md").read_text()
+        for cmd in ("./tools/install-demo-service.sh --check",
+                    "python3 -m unittest discover -s tests",
+                    "sudo ./tools/test-demo-service.sh"):
+            self.assertIn(cmd, readme)
+        self.assertIn("not a Cedudo installation check", readme)
+        self.assertIn("PASSED WITH SKIPS", readme)
+        self.assertLess(readme.index("install-demo-service.sh --check"),
+                        readme.index("### 2. Create the installation directory"))
+
+    def test_integration_script_reports_skips_and_supports_strict(self):
+        text = (ROOT / "tools" / "test-demo-service.sh").read_text()
+        for needle in ("--strict", "PASSED WITH SKIPS", "PASSED (nothing skipped)",
+                       "RESULT: FAILED"):
+            self.assertIn(needle, text)
+        res = subprocess.run(["bash", str(ROOT / "tools" / "test-demo-service.sh"), "--bogus"],
+                             capture_output=True, text=True)
+        self.assertEqual(res.returncode, 64)
+
+
+class StudentIdentityTests(unittest.TestCase):
+    def test_copyable_identity_blocks(self):
+        readme = (ROOT / "README.md").read_text()
+        for block in (
+            "sudo -iu alice\nid\ncedudo read-logs\ncedudo explain restart-demo\nexit\n",
+            "sudo -iu bob\nid\ncedudo explain restart-demo\ncedudo restart-demo\nexit\n",
+        ):
+            self.assertIn(block, readme)
+        self.assertNotRegex(readme, r"(?m)^su - (alice|bob)\s*$")
+        self.assertIn("never executes the operation", readme)
+        self.assertIn("need **no password**", readme)
+        self.assertLess(readme.index("need **no password**"),
+                        readme.index("### 9. Optional: passwords or SSH login"))
+
+
 class DemoProgramTests(unittest.TestCase):
     PROGRAM = ROOT / "demo-service" / "cedar-demo"
 

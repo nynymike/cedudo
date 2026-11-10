@@ -70,6 +70,42 @@ cd ~/cedudo
 
 Later steps assume you are in this clone.
 
+### Checkpoints: run these as you go
+
+Three checks are built into the installation. Run each at the stage shown.
+
+| Stage | Command | What it establishes |
+| --- | --- | --- |
+| Before installing (step 1) | `./tools/install-demo-service.sh --check` | Ubuntu 24.04, systemd running, `systemctl`, `journalctl`, `python3`, `useradd` and friends present. Changes nothing. |
+| Source checks (step 1) | `python3 -m unittest discover -s tests` | Static consistency: manifest IDs and exact arguments, docs and help text agree, the demo program and unit file, mocked `cedudo` behavior. No root or systemd needed. |
+| After installing (step 8) | `sudo ./tools/test-demo-service.sh` | Real service behavior and the installed Cedudo working together on this VM. |
+
+Limits to know about:
+
+- **The preflight is not a Cedudo installation check.** `--check` looks only at
+  what the demo service needs. It does not verify the venv, `cedarling_python`,
+  the setuid wrapper, file ownership, the deployed archive, or the users. Only
+  the final integration run exercises installed Cedudo.
+- **The source checks do not touch the VM.** They run against the repository
+  files, with Cedarling and systemd mocked or skipped.
+- **The integration script can succeed with skipped checks.** Outside the
+  `America/Chicago` window of 09:00 to 16:59, `forbid-restart-outside-hours`
+  applies, so the script skips the allowed-restart check (new `InvocationID` and
+  startup journal entry) and verifies an after-hours denial instead. It still
+  exits 0. Read its final `RESULT:` line: `PASSED (nothing skipped)` is the full
+  result, `PASSED WITH SKIPS` means the allowed path is unverified. Add
+  `--strict` to make skips fail. To get a full run outside the window, the
+  administrator pins the clock (see [`docs/demo-service.md`](docs/demo-service.md)).
+
+Run the first two now:
+
+```bash
+./tools/install-demo-service.sh --check
+python3 -m unittest discover -s tests
+```
+
+Fix anything reported before continuing.
+
 ### 2. Create the installation directory
 
 ```bash
@@ -245,7 +281,15 @@ ignored.
 
 ### 8. Testing
 
-After installation, verify the setup by logging in as different Linux users and trying to run cedudo to do different things.
+First run the automated integration checks (see "Checkpoints" above). They need
+root, the installed Cedudo, the deployed policy, and `alice` and `bob`:
+
+```bash
+sudo ./tools/test-demo-service.sh
+```
+
+Check the final `RESULT:` line. `PASSED WITH SKIPS` is not a full pass. Then
+try the same operations by hand:
 
 **Business hours:** the deployed `forbid-restart-outside-hours` policy denies
 every `restart` request when the `America/Chicago` hour is before 09:00 or at or
@@ -253,66 +297,112 @@ after 17:00 (any day). `cedudo` reads the server clock; callers cannot override
 it. Run restart tests inside that window, or have the administrator set the VM
 clock (see `docs/demo-service.md`). Outputs below assume the window.
 
-#### Test as alice
+#### Switching to student identities
 
-From your administrator account, start a login shell as alice:
+Run these from your **administrator account**. `sudo -iu <user>` opens a login
+shell as that user, and `exit` returns you to your administrator shell. The demo
+accounts need **no password** for this: `useradd` leaves them with a locked
+password, and `sudo` does not ask for the target user's password. Setting
+passwords or SSH login for students is a separate, optional step (step 9).
+
+`cedudo explain <operation-id>` is a dry run. It shows your actual identity
+(uid, gid, groups), the Cedar action and resource, every context value and its
+source, the policy-store fingerprint, the decision with its determining policy
+IDs, and the command that *would* run. It never executes the operation, so it is
+a safe way to see a decision before (or instead of) causing it.
+
+Copy each block as a whole.
+
+#### Test as alice
 
 ```bash
 sudo -iu alice
-```
-
-```bash
+id
 cedudo read-logs
+cedudo explain restart-demo
+exit
 ```
 
+Expected: `id` shows `alice` in `developers` and not in `operators`.
+`read-logs` is permitted (`developers-observe-demo`) and prints up to 20 recent
+`cedar-demo` journal entries. `explain restart-demo` reports `DENY` with no
+determining policy: Cedar is default-deny and nothing permits alice to restart.
+
+Audit lines on stderr look like this:
 
 >cedudo[4669]: INFO PERMIT user=alice uid=1000 groups=['alice', 'developers'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/journalctl', '--unit=cedar-demo.service', '--lines=20', '--no-pager', '--output=short-iso']
->(up to 20 recent `cedar-demo` journal entries)
+
+To see an actual denial and the critical-resource protection, still as alice:
 
 ```bash
+sudo -iu alice
 cedudo restart-demo
+cedudo restart-ssh
+exit
 ```
-
 
 >cedudo[4702]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=[]
 >cedudo: denied: restart-demo
-
-```bash
-cedudo restart-ssh
-```
 
 >cedudo[4708]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
 
 #### Test as `bob`
 
-Now let's try as `bob`. Type `exit` to leave alice's shell and return to your administrator account.
+```bash
+sudo -iu bob
+id
+cedudo explain restart-demo
+cedudo restart-demo
+exit
+```
+
+Expected inside the business-hours window: `id` shows `bob` in `operators`.
+`explain restart-demo` reports `ALLOW` with determining policy
+`operators-restart`. `cedudo restart-demo` then really restarts
+`cedar-demo.service`:
+
+>cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/systemctl', '--no-ask-password', '--no-pager', 'restart', 'cedar-demo.service']
+
+The restart itself prints nothing. Confirm it from any account: the
+`InvocationID` changes.
+
+```bash
+systemctl show cedar-demo.service -p InvocationID -p ActiveState
+```
+
+Outside the window, `explain` shows `DENY` with `forbid-restart-outside-hours`,
+and `restart-demo` is denied without touching the service.
+
+Bob and the critical SSH resource (the execution is simulated either way):
 
 ```bash
 sudo -iu bob
-```
-
-```bash
-cedudo read-logs
-```
->cedudo[4686]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=read-logs action=Linux::Action::"read-logs" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['developers-observe-demo'] exec=['/usr/bin/journalctl', '--unit=cedar-demo.service', '--lines=20', '--no-pager', '--output=short-iso']
-
->(up to 20 recent `cedar-demo` journal entries)
-
-```bash
-cedudo restart-demo
-```
-
-> cedudo[4729]: INFO PERMIT user=bob uid=1001 groups=['bob', 'operators'] operation=restart-demo action=Linux::Action::"restart" resource=Linux::Service::"cedar-demo" local_console=False interactive=True intruder_risk_level=low policies=['operators-restart'] exec=['/usr/bin/systemctl', '--no-ask-password', '--no-pager', 'restart', 'cedar-demo.service']
-
->(no output; confirm with `systemctl show cedar-demo.service -p InvocationID`, which changes after the restart)
-
-```bash
 cedudo restart-ssh
+exit
 ```
 
 >cedudo[4735]: WARNING DENY user=bob uid=1001 groups=['bob', 'operators'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
-
 >cedudo: denied: restart-ssh
+
+The `local_console` and `is_remote` values depend on how you reached the VM: an
+administrator logged in over SSH is reported as remote, even through
+`sudo -iu`. `explain` shows the value and where it came from.
+
+### 9. Optional: passwords or SSH login for students
+
+Skip this if you drive all testing from the administrator account. It is needed
+only when students must log in as `alice` or `bob` themselves (for example
+`su - bob` between accounts, or SSH). It is not required for any step above.
+
+```bash
+sudo passwd alice
+sudo passwd bob
+```
+
+SSH access depends on your VM's `sshd` configuration (password authentication
+is often disabled by default on Ubuntu images) and is outside this guide. Use a
+throwaway password you hand out for the workshop, and remove it afterwards with
+`sudo passwd -l alice` and `sudo passwd -l bob`.
 
 # Configuring Ubuntu OIDC Login with authd
 

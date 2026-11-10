@@ -2,7 +2,10 @@
 # ADMINISTRATOR VALIDATION -- run as root on the Ubuntu 24.04 workshop VM,
 # after tools/install-demo-service.sh and the Cedudo install (README.md):
 #
-#     sudo tools/test-demo-service.sh
+#     sudo tools/test-demo-service.sh [--strict]
+#
+# Exit status 0 can mean "passed with skips". Read the RESULT line, or use
+# --strict to make any skipped check a failure.
 #
 # This is an integration test. It needs real systemd, root, the installed
 # cedudo wrapper, the deployed policy, and the users alice (developers) and
@@ -16,7 +19,12 @@ set -uo pipefail
 
 SERVICE=cedar-demo.service
 CEDUDO=/usr/local/bin/cedudo
-PASS=0; FAIL=0; SKIP=0
+PASS=0; FAIL=0; SKIP=0; STRICT=0
+case "${1:-}" in
+  "") ;;
+  --strict) STRICT=1 ;;
+  *) echo "usage: $0 [--strict]" >&2; exit 64 ;;
+esac
 
 [[ "${EUID}" -eq 0 ]] || { echo "error: run as root" >&2; exit 1; }
 
@@ -135,5 +143,14 @@ run_rc rc as bob "${CEDUDO}" root-shell
 
 echo
 echo "Summary: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"
-(( SKIP > 0 )) && echo "Skipped checks did NOT run; see SKIP lines above."
-(( FAIL == 0 ))
+if (( FAIL > 0 )); then
+  echo "RESULT: FAILED"
+  exit 1
+fi
+if (( SKIP > 0 )); then
+  echo "RESULT: PASSED WITH SKIPS -- ${SKIP} check(s) did NOT run (see SKIP lines above)."
+  echo "        The allowed-restart path is unverified. Rerun inside the business-hours window."
+  (( STRICT == 1 )) && { echo "        --strict: treating skips as failure."; exit 1; }
+  exit 0
+fi
+echo "RESULT: PASSED (nothing skipped)"
