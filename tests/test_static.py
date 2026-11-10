@@ -168,6 +168,24 @@ class DocumentationTests(unittest.TestCase):
             self.assertIn(needle, text)
 
 
+class RequirementsTests(unittest.TestCase):
+    def test_cedarling_pinned_exactly(self):
+        lines = [l.strip() for l in (ROOT / "requirements.txt").read_text().splitlines()
+                 if l.strip() and not l.lstrip().startswith("#")]
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(lines[0], r"^cedarling-python==\d+\.\d+\.\d+$")
+
+    def test_readme_installs_from_requirements_and_builds_archive(self):
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("pip install -r requirements.txt", readme)
+        self.assertNotRegex(readme, r"pip install cedarling-python")
+        self.assertIn("./tools/build-cjar.sh", readme)
+        self.assertLess(readme.index("./tools/build-cjar.sh"),
+                        readme.index("policy/cedudo.cjar /opt/cedudo/cedudo.cjar"))
+        self.assertIn("zip` and `unzip", readme)
+        self.assertIn("does **not** parse the policies", readme)
+
+
 class DemoProgramTests(unittest.TestCase):
     PROGRAM = ROOT / "demo-service" / "cedar-demo"
 

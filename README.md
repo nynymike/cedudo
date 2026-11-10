@@ -17,13 +17,14 @@ This document describes how to install `cedudo` as a setuid-root executable.
 - Python 3 with `venv` and `pip` (the Ubuntu 24.04 packages below)
 - Git
 - GCC (to compile the C wrapper)
-- `cedarling_python` (the Janssen Cedarling Python bindings)
+- `zip` and `unzip` (used by `tools/build-cjar.sh` and `tools/deploy-policy.sh`)
+- `cedarling_python` (the Janssen Cedarling Python bindings), pinned in `requirements.txt`
 - An ordinary administrator account with `sudo` rights (see "Administrator context" below)
 - On Ubuntu 24.04, install the build and Python tools with:
 
 ```bash
 sudo apt update
-sudo apt install gcc python3 python3-venv python3-pip git
+sudo apt install gcc python3 python3-venv python3-pip git zip unzip
 ```
 
 ### Environment support
@@ -32,6 +33,7 @@ sudo apt install gcc python3 python3-venv python3-pip git
 | --- | --- |
 | Complete workshop (Cedudo + `cedar-demo.service`, exercises) | Ubuntu 24.04 with systemd running, system Python. `tools/install-demo-service.sh` refuses to run anywhere else. |
 | `cedudo.py` alone | Linux with a compiler, Python 3.9 or later (it imports `zoneinfo`, which Python 3.8 lacks) and a `cedarling-python` build for your platform. Not tested outside Ubuntu 24.04. |
+| Architecture | The pinned `cedarling-python` publishes Linux **x86_64** wheels only (CPython 3.10 to 3.12). An ARM (aarch64) VM has no wheel and will not work. |
 | `tools/cedudo-simulate.py`, `tests/` | Python 3.9 or later, any OS. No root or systemd. |
 
 An ordinary container (for example a default Docker image) does **not** meet
@@ -80,12 +82,13 @@ sudo install -d -o root -g root -m 0755 /opt/cedudo
 
 `cedudo.py` imports `cedarling_python`. Install that module into the
 `/opt/cedudo/venv` interpreter the C wrapper uses. The PyPI package name is
-`cedarling-python`; the import name is `cedarling_python`.
+`cedarling-python`; the import name is `cedarling_python`. The version is
+pinned in [`requirements.txt`](requirements.txt) so every workshop VM gets the
+same build.
 
 ```bash
 sudo python3 -m venv /opt/cedudo/venv
-sudo /opt/cedudo/venv/bin/python3 -m pip install --upgrade pip
-sudo /opt/cedudo/venv/bin/python3 -m pip install cedarling-python
+sudo /opt/cedudo/venv/bin/python3 -m pip install -r requirements.txt
 ```
 
 The venv is created by root so that it is root-owned, which is what the setuid
@@ -98,10 +101,27 @@ Confirm the module is available (this must succeed before you continue):
 ```
 
 If that command raises `ModuleNotFoundError: No module named 'cedarling_python'`,
-the package is not installed in this venv. Re-run the `pip install` above and
+the package is not installed in this venv. Re-run the `pip install -r requirements.txt` above and
 do not run `cedudo.py` with system `python3`.
 
-### 4. Copy the files
+### 4. Package the policy store and copy the files
+
+First package the policy store under `policy/store/` into the Cedar Archive.
+As your administrator account (no `sudo`; it writes into your clone):
+
+```bash
+./tools/build-cjar.sh
+```
+
+This rebuilds `policy/cedudo.cjar` from the source policies, so the archive you
+install matches what is in `policy/store/`. It is packaging, not validation:
+the script checks that the required files exist, that `metadata.json` has the
+required keys, and that each `.cedar` file has one `@id(...)`, then zips the
+store. It does **not** parse the policies or check them against the schema. A
+policy error shows up later, when Cedarling loads the archive. Rebuilding
+changes the checked-in `policy/cedudo.cjar` (zip timestamps), which is expected.
+
+Then install the files:
 
 ```bash
 sudo install -o root -g root -m 0644 cedudo.py /opt/cedudo/cedudo.py
@@ -585,7 +605,7 @@ Do not share client secrets, access tokens, refresh tokens, or ID tokens when sh
 | Issue                                                     | Solution                                                                                                                                        |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cedudo[18629]: ERROR direct root invocation is not a workshop principal` | Run it as `alice` or `bob` (for example `sudo -iu alice`), not as root | 
-| `ModuleNotFoundError: No module named 'cedarling_python'` | Install into the venv the wrapper uses: `sudo /opt/cedudo/venv/bin/python3 -m pip install cedarling-python`. Do not run `cedudo.py` with system `python3`. |
+| `ModuleNotFoundError: No module named 'cedarling_python'` | Install into the venv the wrapper uses: `sudo /opt/cedudo/venv/bin/python3 -m pip install -r requirements.txt` (run from the clone). Do not run `cedudo.py` with system `python3`. |
 | `must be installed as setuid root`                        | Most likely: setuid doesn't work on Python scripts. Use the C wrapper: run `./install-wrapper.sh` as your administrator account (no `sudo`)                                                   |
 | Wrapper not found                                         | Run `./install-wrapper.sh` (no `sudo`), which compiles it and installs it as root with mode 4755                         |
 | `cannot inspect policy store`                             | Verify files are owned by root and in `/opt/cedudo/`                                                                                            |

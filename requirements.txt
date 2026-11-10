@@ -1,0 +1,10 @@
+# Python dependencies for the cedudo runtime venv (/opt/cedudo/venv).
+# Install with:
+#   sudo /opt/cedudo/venv/bin/python3 -m pip install -r requirements.txt
+#
+# Pinned for reproducible workshop setup. Chosen to match the Cedarling 2.3.37
+# policy-store format referenced by tools/build-cjar.sh. PyPI publishes
+# Linux x86_64 wheels for CPython 3.10-3.12, which covers Ubuntu 24.04 (3.12)
+# on x86_64; there is no wheel for ARM (aarch64) Linux or for macOS.
+# Change the pin deliberately and retest the whole workshop on the VM.
+cedarling-python==2.3.37

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+command -v zip >/dev/null || { echo "error: zip is required (sudo apt install zip)" >&2; exit 1; }
 STORE="${ROOT}/policy/store"
 OUT="${ROOT}/policy/cedudo.cjar"
 
