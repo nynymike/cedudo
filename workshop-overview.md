@@ -184,7 +184,7 @@ window, the exercise still runs with a different, equally instructive result:
 `bob`'s restart is denied by `forbid-restart-outside-hours` and the
 `InvocationID` stays the same, while `read-logs` still works. Facilitators can
 also show the allowed daytime decision with the unprivileged simulator, run by
-an administrator with the venv interpreter (command in `README.md`, step 8),
+an administrator with the venv interpreter (command in `README.md`, "Business hours: three ways to test"),
 or rerun the real restart during the window. Clock pinning exists only as a
 last resort for an isolated, disposable VM; see
 [`docs/demo-service.md`](docs/demo-service.md).

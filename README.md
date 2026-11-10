@@ -3,31 +3,27 @@
 `cedudo` is a more restrictive alternative to the `sudo` command where Cedar policies
 are used to control access to what linux commands a user can run. Cedudo looks up
 the Linux groups of the user and maps other information into the context, e.g. time of 
-day. Cedudo is very restrictive by design, and is meant for demo purposes. 
+day. Cedudo is very restrictive by design, and is meant for demo purposes.
+
+## Guides
+
+- [`workshop-overview.md`](workshop-overview.md): the 80-minute student workshop and the restart exercise.
+- [`docs/demo-service.md`](docs/demo-service.md): administering the `cedar-demo` service (install, validate, business-hours testing, uninstall).
+- [`docs/cedudo.md`](docs/cedudo.md): how `cedudo` works, the authorization request, and writing policies.
+- [`docs/oidc-login.md`](docs/oidc-login.md): optional OIDC login with authd.
+
+Sections below: supported environment, administrator prerequisites, install,
+verify, test as students, troubleshooting, update and redeploy, uninstall.
 
 # Installing cedudo
 
 This document describes how to install `cedudo` as a setuid-root executable.
 
-## Prerequisites
+## 1. Supported environment
 
-- **Supported workshop environment: Ubuntu 24.04 LTS with systemd running,
-  using its system Python 3 (3.12).** The complete workshop installation
-  (Cedudo plus the `cedar-demo` service) is supported and tested only there.
-- Python 3 with `venv` and `pip` (the Ubuntu 24.04 packages below)
-- Git
-- GCC (to compile the C wrapper)
-- `zip` and `unzip` (used by `tools/build-cjar.sh` and `tools/deploy-policy.sh`)
-- `cedarling_python` (the Janssen Cedarling Python bindings), pinned in `requirements.txt`
-- An ordinary administrator account with `sudo` rights (see "Administrator context" below)
-- On Ubuntu 24.04, install the build and Python tools with:
-
-```bash
-sudo apt update
-sudo apt install gcc python3 python3-venv python3-pip git zip unzip
-```
-
-### Environment support
+**Supported workshop environment: Ubuntu 24.04 LTS with systemd running, using
+its system Python 3 (3.12).** The complete workshop installation (Cedudo plus
+the `cedar-demo` service) is supported and tested only there.
 
 | Component | Requirement |
 | --- | --- |
@@ -41,7 +37,21 @@ the installer's requirements: it normally has no systemd running, so the
 `cedar-demo` service cannot be installed, started, or restarted. Use an Ubuntu
 24.04 VM.
 
-## Installation Steps
+## 2. Administrator prerequisites
+
+- An ordinary administrator account with `sudo` rights (see "Administrator context" below)
+- Git
+- GCC (to compile the C wrapper)
+- Python 3 with `venv` and `pip` (system Python on Ubuntu 24.04)
+- `zip` and `unzip` (used by `tools/build-cjar.sh` and `tools/deploy-policy.sh`)
+- `cedarling_python` (the Janssen Cedarling Python bindings), pinned in `requirements.txt`
+
+Install the build and Python tools on Ubuntu 24.04:
+
+```bash
+sudo apt update
+sudo apt install gcc python3 python3-venv python3-pip git zip unzip
+```
 
 ### Administrator context
 
@@ -58,6 +68,8 @@ not open a root shell and do not clone into `/root`.
   **with** `sudo`.
 - Students use their own accounts (`alice`, `bob`) and never run any of this.
 
+## 3. Install
+
 ### 1. Clone the repository
 
 As your administrator account:
@@ -70,34 +82,7 @@ cd ~/cedudo
 
 Later steps assume you are in this clone.
 
-### Checkpoints: run these as you go
-
-Three checks are built into the installation. Run each at the stage shown.
-
-| Stage | Command | What it establishes |
-| --- | --- | --- |
-| Before installing (step 1) | `./tools/install-demo-service.sh --check` | Ubuntu 24.04, systemd running, `systemctl`, `journalctl`, `python3`, `useradd` and friends present. Changes nothing. |
-| Source checks (step 1) | `python3 -m unittest discover -s tests` | Static consistency: manifest IDs and exact arguments, docs and help text agree, the demo program and unit file, mocked `cedudo` behavior. No root or systemd needed. |
-| After installing (step 8) | `sudo ./tools/test-demo-service.sh` | Real service behavior and the installed Cedudo working together on this VM. |
-
-Limits to know about:
-
-- **The preflight is not a Cedudo installation check.** `--check` looks only at
-  what the demo service needs. It does not verify the venv, `cedarling_python`,
-  the setuid wrapper, file ownership, the deployed archive, or the users. Only
-  the final integration run exercises installed Cedudo.
-- **The source checks do not touch the VM.** They run against the repository
-  files, with Cedarling and systemd mocked or skipped.
-- **The integration script can succeed with skipped checks.** Outside the
-  `America/Chicago` window of 09:00 to 16:59, `forbid-restart-outside-hours`
-  applies, so the script skips the allowed-restart check (new `InvocationID` and
-  startup journal entry) and verifies an after-hours denial instead. It still
-  exits 0. Read its final `RESULT:` line: `PASSED (nothing skipped)` is the full
-  result, `PASSED WITH SKIPS` means the allowed path is unverified. Add
-  `--strict` to make skips fail. Changing the VM clock is not the routine fix;
-  see "Business hours: three ways to test" below.
-
-Run the first two now:
+Before going further, run the two pre-install checks (details under "Verify"):
 
 ```bash
 ./tools/install-demo-service.sh --check
@@ -188,7 +173,7 @@ Only `install-wrapper.sh` handles the wrapper and its symlink; it does not
 secure the other files. At runtime `cedudo` also refuses a manifest or
 archive that is not a root-owned regular file without group/world write
 access, but it does not check `cedudo.py` or the Python environment, so
-verify them yourself after installing (step 5).
+verify them yourself under "Verify" below.
 
 
 
@@ -202,7 +187,7 @@ chmod +x install-wrapper.sh
 ./install-wrapper.sh
 ```
 
-This creates `/opt/cedudo/cedudo` (a compiled binary with setuid, `root:root 4755`) and the `/usr/local/bin/cedudo` symlink. It secures only the wrapper; the other files were secured in step 4.
+This creates `/opt/cedudo/cedudo` (a compiled binary with setuid, `root:root 4755`) and the `/usr/local/bin/cedudo` symlink. It secures only the wrapper; the other files were secured in step 4. To recover a missing or wrong wrapper, rerun this script; do not assemble the wrapper by hand.
 
 
 Verify ownership is root 
@@ -217,24 +202,6 @@ stat -c '%a' /opt/cedudo/cedudo
 ```
 
 Should output `4755`
-
-Then verify the whole installation. As your administrator account:
-
-```bash
-# Parent directories and key files: expect root:root and no group/world write
-stat -c '%U:%G %a %n' /opt /opt/cedudo /opt/cedudo/cedudo.py \
-    /opt/cedudo/operations.json /opt/cedudo/cedudo.cjar /opt/cedudo/cedudo \
-    /usr/local/bin /usr/bin/python3
-
-# Should print NOTHING: anything under /opt/cedudo (venv included) that is
-# not root-owned or is group/world-writable. Symlinks are skipped; the venv
-# python3 symlink target is checked above.
-sudo find /opt/cedudo -not -type l \( ! -user root -o -perm /022 \) -print
-```
-
-If the `find` prints anything, fix it before continuing, for example with
-`sudo chown -R root:root /opt/cedudo` and `sudo chmod -R go-w /opt/cedudo`.
-
 
 ### 6. Create the demo users
 
@@ -279,19 +246,64 @@ Operations in `operations.json`:
 The caller supplies only the operation ID; extra arguments are logged and
 ignored.
 
-### 8. Testing
+## 4. Verify
 
-First run the automated integration checks (see "Checkpoints" above). They need
-root, the installed Cedudo, the deployed policy, and `alice` and `bob`:
+### Automated checks
+
+Three automated checks are built in. Run each at the stage shown. The first two are also in step 1.
+
+| Stage | Command | What it establishes |
+| --- | --- | --- |
+| Before installing (step 1) | `./tools/install-demo-service.sh --check` | Ubuntu 24.04, systemd running, `systemctl`, `journalctl`, `python3`, `useradd` and friends present. Changes nothing. |
+| Source checks (step 1) | `python3 -m unittest discover -s tests` | Static consistency: manifest IDs and exact arguments, docs and help text agree, the demo program and unit file, mocked `cedudo` behavior. No root or systemd needed. |
+| After installing (below) | `sudo ./tools/test-demo-service.sh` | Real service behavior and the installed Cedudo working together on this VM. |
+
+Limits to know about:
+
+- **The preflight is not a Cedudo installation check.** `--check` looks only at
+  what the demo service needs. It does not verify the venv, `cedarling_python`,
+  the setuid wrapper, file ownership, the deployed archive, or the users. Only
+  the final integration run exercises installed Cedudo.
+- **The source checks do not touch the VM.** They run against the repository
+  files, with Cedarling and systemd mocked or skipped.
+- **The integration script can succeed with skipped checks.** Outside the
+  `America/Chicago` window of 09:00 to 16:59, `forbid-restart-outside-hours`
+  applies, so the script skips the allowed-restart check (new `InvocationID` and
+  startup journal entry) and verifies an after-hours denial instead. It still
+  exits 0. Read its final `RESULT:` line: `PASSED (nothing skipped)` is the full
+  result, `PASSED WITH SKIPS` means the allowed path is unverified. Add
+  `--strict` to make skips fail. Changing the VM clock is not the routine fix;
+  see "Business hours: three ways to test" below.
+
+Verify file ownership and permissions across the whole installation. As your administrator account:
+
+```bash
+# Parent directories and key files: expect root:root and no group/world write
+stat -c '%U:%G %a %n' /opt /opt/cedudo /opt/cedudo/cedudo.py \
+    /opt/cedudo/operations.json /opt/cedudo/cedudo.cjar /opt/cedudo/cedudo \
+    /usr/local/bin /usr/bin/python3
+
+# Should print NOTHING: anything under /opt/cedudo (venv included) that is
+# not root-owned or is group/world-writable. Symlinks are skipped; the venv
+# python3 symlink target is checked above.
+sudo find /opt/cedudo -not -type l \( ! -user root -o -perm /022 \) -print
+```
+
+If the `find` prints anything, fix it before continuing to the student tests, for example with
+`sudo chown -R root:root /opt/cedudo` and `sudo chmod -R go-w /opt/cedudo`.
+
+Then run the integration check as your administrator account. It needs root, the installed Cedudo, the deployed policy, and `alice` and `bob`:
 
 ```bash
 sudo ./tools/test-demo-service.sh
 ```
 
-Check the final `RESULT:` line. `PASSED WITH SKIPS` is not a full pass. Then
-try the same operations by hand:
+Read the final `RESULT:` line. `PASSED WITH SKIPS` is not a full pass; see
+"Business hours: three ways to test" below.
 
-#### Business hours: three ways to test
+## 5. Test as students
+
+### Business hours: three ways to test
 
 The deployed `forbid-restart-outside-hours` policy denies every `restart`
 request when the `America/Chicago` hour is before 09:00 or at or after 17:00,
@@ -322,13 +334,13 @@ isolated, disposable VM only, are in
 [`docs/demo-service.md`](docs/demo-service.md). Outputs below that show a
 permitted restart assume choice 3 (inside the window).
 
-#### Switching to student identities
+### Switching to student identities
 
 Run these from your **administrator account**. `sudo -iu <user>` opens a login
 shell as that user, and `exit` returns you to your administrator shell. The demo
 accounts need **no password** for this: `useradd` leaves them with a locked
 password, and `sudo` does not ask for the target user's password. Setting
-passwords or SSH login for students is a separate, optional step (step 9).
+passwords or SSH login for students is a separate, optional step (see "Optional: passwords or SSH login" below).
 
 `cedudo explain <operation-id>` is a dry run. It shows your actual identity
 (uid, gid, groups), the Cedar action and resource, every context value and its
@@ -338,7 +350,7 @@ a safe way to see a decision before (or instead of) causing it.
 
 Copy each block as a whole.
 
-#### Test as alice
+### Test as alice
 
 ```bash
 sudo -iu alice
@@ -371,7 +383,7 @@ exit
 
 >cedudo[4708]: WARNING DENY user=alice uid=1000 groups=['alice', 'developers'] operation=restart-ssh action=Linux::Action::"restart" resource=Linux::Service::"ssh" local_console=False interactive=True intruder_risk_level=low policies=['forbid-critical-restart']
 
-#### Test as `bob`
+### Test as `bob`
 
 ```bash
 sudo -iu bob
@@ -413,7 +425,7 @@ The `local_console` and `is_remote` values depend on how you reached the VM: an
 administrator logged in over SSH is reported as remote, even through
 `sudo -iu`. `explain` shows the value and where it came from.
 
-### 9. Optional: passwords or SSH login for students
+### Optional: passwords or SSH login for students
 
 Skip this if you drive all testing from the administrator account. It is needed
 only when students must log in as `alice` or `bob` themselves (for example
@@ -429,7 +441,7 @@ is often disabled by default on Ubuntu images) and is outside this guide. Use a
 throwaway password you hand out for the workshop, and remove it afterwards with
 `sudo passwd -l alice` and `sudo passwd -l bob`.
 
-## Optional: OIDC login
+### Optional: OIDC login
 
 Logging in through an OIDC identity provider (Ubuntu authd) is **optional** and
 not needed for the local `alice` and `bob` exercises. A successful OIDC login
@@ -438,38 +450,77 @@ the Linux groups `developers` and `operators`. See
 [`docs/oidc-login.md`](docs/oidc-login.md), including its "Groups and
 authorization" section.
 
-## Troubleshooting
+## 6. Troubleshooting
 
+The installers are the single source of truth for how the wrapper, the demo
+service and the policy archive are installed, so recovery means rerunning them,
+not following a second recipe. After any fix, repeat "Verify".
 
-| Issue                                                     | Solution                                                                                                                                        |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cedudo[18629]: ERROR direct root invocation is not a workshop principal` | Run it as `alice` or `bob` (for example `sudo -iu alice`), not as root | 
-| `ModuleNotFoundError: No module named 'cedarling_python'` | Install into the venv the wrapper uses: `sudo /opt/cedudo/venv/bin/python3 -m pip install -r requirements.txt` (run from the clone). Do not run `cedudo.py` with system `python3`. |
-| `must be installed as setuid root`                        | Most likely: setuid doesn't work on Python scripts. Use the C wrapper: run `./install-wrapper.sh` as your administrator account (no `sudo`)                                                   |
-| Wrapper not found                                         | Run `./install-wrapper.sh` (no `sudo`), which compiles it and installs it as root with mode 4755                         |
-| `cannot inspect policy store`                             | Verify files are owned by root and in `/opt/cedudo/`                                                                                            |
-| `Cedarling initialization failed`                         | Check that `cedudo.cjar` exists and is valid. `metadata.json` must use `cedar_version` (see Cedarling policy store format).                     |
-| `invoking user not found`                                 | Ensure your user account exists in `/etc/passwd`                                                                                                |
-| Permission denied                                         | The **wrapper binary** must be executable with setuid bit set                                                                                   |
-| Script works for root but not regular users               | Check that `/opt/cedudo/cedudo` (not cedudo.py) has the setuid bit: `stat -c '%a' /opt/cedudo/cedudo` Should be '4755'                                                |
+| Symptom | Cause and fix |
+| --- | --- |
+| `ERROR direct root invocation is not a workshop principal` | Deliberate. `cedudo` authorizes the *original* Linux user, so it refuses to run as root (including `sudo cedudo` and a root shell). Run it as a student: `sudo -iu alice`, then `cedudo …`, then `exit`. |
+| `cedudo: command not found`, or `Permission denied` for a regular user | The symlink or wrapper is missing or not executable. Rerun `./install-wrapper.sh` (administrator account, no `sudo`), then check `stat -c '%U:%G %a' /opt/cedudo/cedudo` shows `root:root 4755` and `ls -l /usr/local/bin/cedudo` points to `/opt/cedudo/cedudo`. |
+| `must be installed as setuid root` | `cedudo` ran without the setuid bit: the Python script was run directly, or the wrapper's mode or owner is wrong. Rerun `./install-wrapper.sh`; do not run `cedudo.py` yourself. |
+| `ModuleNotFoundError: No module named 'cedarling_python'` | The wrapper's venv lacks the package. From the clone: `sudo /opt/cedudo/venv/bin/python3 -m pip install -r requirements.txt`. Do not use the system `python3`. |
+| `cannot inspect policy store` / `policy store must be owned by root` | The archive is missing or not a root-owned regular file. Redo the file-copy commands in step 4, then the ownership check under "Verify". |
+| `Cedarling initialization failed` | The archive is missing, invalid, or the `cedarling-python` build does not match it. Rebuild with `./tools/build-cjar.sh` and redeploy (see "Update and redeploy"); confirm `metadata.json` uses `cedar_version`. |
+| `unknown operation: X` | `X` is not in `/opt/cedudo/operations.json`. `root-shell` is deliberately absent. Check the installed manifest matches the repository copy. |
+| `invoking user not found` / `identity does not match the local account database` | The calling uid is not in the account database. Use a real local account. |
+| `restart-demo` denied during the day | Check `cedudo explain restart-demo` as that user: groups and determining policy IDs. `alice` is denied by default; `bob` needs `operators`. |
+| `restart-demo` denied for `bob` and the hour looks wrong | `forbid-restart-outside-hours` uses `America/Chicago` time. See "Business hours: three ways to test"; do not change the clock casually. |
+| `PERMIT` but nothing changed | Authorization succeeded; the command failed or did nothing. Compare `systemctl show cedar-demo.service -p InvocationID` before and after, and run `systemctl status cedar-demo`. |
+| `cedar-demo.service` missing or inactive | Rerun `sudo tools/install-demo-service.sh` and see `docs/demo-service.md`. |
+| `RESULT: PASSED WITH SKIPS` | Not a failure, but the allowed restart was not verified. See "Business hours: three ways to test". |
 
-## Uninstallation
+## 7. Update and redeploy
 
-Remove the demo service first (administrator). It stops and disables the
-service and removes only the unit, `/opt/cedar-demo`, and the `cedar-demo`
-account if the installer created it. It does not touch `/opt/cedudo`, `alice`,
-`bob`, or the `developers`/`operators` groups:
+Change one thing at a time, redeploy it with the same commands as the install,
+then repeat "Verify". Run scripts as your administrator account; they call
+`sudo` where needed.
+
+| What changed | Redeploy |
+| --- | --- |
+| Cedar policies or schema in `policy/store/` | `./tools/build-cjar.sh` then `./tools/deploy-policy.sh` |
+| `cedudo.py` | `sudo install -o root -g root -m 0644 cedudo.py /opt/cedudo/cedudo.py` |
+| `operations.json` | `sudo install -o root -g root -m 0644 operations.json /opt/cedudo/operations.json`, then `sudo tools/install-demo-service.sh` (warns if the installed manifest differs) |
+| The C wrapper | `./install-wrapper.sh` |
+| `demo-service/` program or unit | `sudo tools/install-demo-service.sh` (restarts the service only if the files changed) |
+| The `cedarling-python` pin | Edit `requirements.txt`, then `sudo /opt/cedudo/venv/bin/python3 -m pip install -r requirements.txt` and retest the whole workshop |
+
+After a policy redeploy, check the effect as a student with
+`cedudo explain <operation-id>` before relying on it.
+
+## 8. Uninstall
+
+Each step is separate; stop wherever you want to keep something.
+
+**1. The demo service** (stops and disables it; removes only the unit,
+`/opt/cedar-demo`, and the `cedar-demo` account if the installer created it; it
+does not touch `/opt/cedudo`, `alice`, `bob` or the shared groups):
 
 ```bash
 sudo tools/uninstall-demo-service.sh
 ```
 
-Then remove Cedudo itself:
+**2. Cedudo itself:**
 
 ```bash
 sudo rm -rf /opt/cedudo
-sudo rm -f /usr/local/bin/cedudo
+# Remove the symlink only if it points at the wrapper you installed:
+[ "$(readlink /usr/local/bin/cedudo)" = /opt/cedudo/cedudo ] && sudo rm /usr/local/bin/cedudo
 ```
 
-Your clone in the administrator's home directory (`~/cedudo`) is an ordinary
-directory; delete it yourself if you no longer need it.
+**3. Optional: the demo users and groups.** Do this only if you created
+`alice`, `bob`, `developers` and `operators` just for this workshop. Other
+software or people may use those groups.
+
+```bash
+sudo userdel -r alice
+sudo userdel -r bob
+sudo groupdel developers
+sudo groupdel operators
+```
+
+**4. Optional: your source clone.** Uninstalling the application does not
+remove the repository you cloned, and its location is wherever you chose. Delete
+it yourself if you no longer need it.

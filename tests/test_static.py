@@ -220,19 +220,19 @@ class StudentIdentityTests(unittest.TestCase):
         self.assertIn("never executes the operation", readme)
         self.assertIn("need **no password**", readme)
         self.assertLess(readme.index("need **no password**"),
-                        readme.index("### 9. Optional: passwords or SSH login"))
+                        readme.index("### Optional: passwords or SSH login"))
 
 
 class OidcSeparationTests(unittest.TestCase):
     def test_oidc_moved_out_of_readme(self):
         readme = (ROOT / "README.md").read_text()
         oidc = (ROOT / "docs" / "oidc-login.md").read_text()
-        self.assertNotIn("authd", readme.replace("docs/oidc-login.md", "").replace("(Ubuntu authd)", ""))
+        for moved in ("add-apt-repository", "broker.conf", "authd-oidc", "keyboard-interactive"):
+            self.assertNotIn(moved, readme)
         self.assertIn("docs/oidc-login.md", readme)
         self.assertIn("optional", readme.lower())
         self.assertIn("not needed for the local `alice` and `bob`", readme)
-        self.assertLess(readme.index("## Troubleshooting"), readme.index("## Uninstallation"))
-        self.assertLess(readme.index("## Optional: OIDC login"), readme.index("## Troubleshooting"))
+        self.assertLess(readme.index("### Optional: OIDC login"), readme.index("## 6. Troubleshooting"))
         self.assertIn("## Groups and authorization", oidc)
         self.assertIn("grants no Cedudo capability", oidc)
         self.assertIn("`developers`", oidc)
@@ -267,6 +267,36 @@ class BusinessHoursChoicesTests(unittest.TestCase):
     def test_simulator_shebang_needs_explicit_venv_python(self):
         first = (ROOT / "tools" / "cedudo-simulate.py").read_text().splitlines()[0]
         self.assertEqual(first, "#!/usr/bin/env python3")
+
+
+class ReadmeStructureTests(unittest.TestCase):
+    README = (ROOT / "README.md").read_text()
+
+    def test_section_order(self):
+        order = ["## 1. Supported environment", "## 2. Administrator prerequisites",
+                 "## 3. Install", "## 4. Verify", "## 5. Test as students",
+                 "## 6. Troubleshooting", "## 7. Update and redeploy", "## 8. Uninstall"]
+        positions = [self.README.index(h) for h in order]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_links_to_guides(self):
+        for link in ("workshop-overview.md", "docs/demo-service.md", "docs/oidc-login.md"):
+            self.assertIn(f"]({link})", self.README.split("# Installing cedudo")[0])
+
+    def test_troubleshooting_repaired(self):
+        trouble = self.README[self.README.index("## 6. Troubleshooting"):self.README.index("## 7. Update")]
+        self.assertNotIn("Script works for root but not regular users", trouble)
+        self.assertIn("Deliberate", trouble)
+        self.assertNotIn("gcc -o cedudo", self.README)
+        self.assertIn("rerunning them", trouble)
+        self.assertIn("./install-wrapper.sh", trouble)
+
+    def test_cleanup_does_not_remove_clone(self):
+        self.assertNotIn("/root/cedudo", self.README)
+        uninstall = self.README[self.README.index("## 8. Uninstall"):]
+        self.assertNotRegex(uninstall, r"rm -rf [~\$]?[\w/]*cedudo\b(?<!/opt/cedudo)")
+        self.assertIn("Delete\nit yourself", uninstall)
+        self.assertIn("readlink /usr/local/bin/cedudo", uninstall)
 
 
 class DemoProgramTests(unittest.TestCase):
