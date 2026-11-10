@@ -165,7 +165,7 @@ next. systemd also assigns each run an `InvocationID`.
 - `alice` and `bob` are ordinary users. They are not in `sudo`, `admin`, `adm`
   or `systemd-journal`, and no polkit rule lets them manage services.
 - The deployed policy is the starter policy, including `forbid-restart-outside-hours`.
-- The VM clock is inside the restart window (see "Business hours" below).
+- The VM clock is correct and synchronized. Nobody changes it for the exercise (see "Business hours" below).
 
 **Business hours.** `forbid-restart-outside-hours` forbids every `restart`
 request when the hour in `America/Chicago` is before 09:00 or from 17:00 on, on
@@ -179,13 +179,15 @@ TZ=America/Chicago date '+%A %H:%M'     # restart is possible from 09:00 to 16:5
 cedudo explain restart-demo             # dry run: shows context "hour" and the decision
 ```
 
-If it is outside the window, tell a facilitator, who can pin the VM clock
-(administrator only; see [`docs/demo-service.md`](docs/demo-service.md)).
-
-Outside the window the exercise still works, with a different result: `bob`'s
-restart is denied by `forbid-restart-outside-hours`, which is itself worth
-seeing. Without VM access, `tools/cedudo-simulate.py` answers "what if it were
-10:00?" without running anything.
+The clock is not changed to make the exercise work. If it is outside the
+window, the exercise still runs with a different, equally instructive result:
+`bob`'s restart is denied by `forbid-restart-outside-hours` and the
+`InvocationID` stays the same, while `read-logs` still works. Facilitators can
+also show the allowed daytime decision with the unprivileged simulator, run by
+an administrator with the venv interpreter (command in `README.md`, step 8),
+or rerun the real restart during the window. Clock pinning exists only as a
+last resort for an isolated, disposable VM; see
+[`docs/demo-service.md`](docs/demo-service.md).
 
 #### Steps (start as alice)
 

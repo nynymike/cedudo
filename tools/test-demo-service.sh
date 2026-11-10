@@ -107,7 +107,7 @@ if (( hour >= 9 && hour < 17 )); then
   [[ -n "${after_sid}" && "${after_sid}" != "${before_sid}" ]] && ok "new startup_id in journal" || bad "startup_id did not change"
   check "service active after restart" systemctl is-active --quiet "${SERVICE}"
 else
-  skip "allowed restart needs 09:00-16:59 America/Chicago (now hour ${hour}); set the VM clock or rerun in hours"
+  skip "allowed restart needs 09:00-16:59 America/Chicago (now hour ${hour}); rerun during the window (do not change the VM clock casually)"
   run_rc rc as bob "${CEDUDO}" restart-demo
   [[ "${rc}" -eq 77 ]] && ok "after hours: bob denied (forbid-restart-outside-hours)" || bad "after hours: bob exit ${rc}, expected 77"
   [[ "$(invocation)" == "${before}" ]] && ok "after-hours denial left InvocationID unchanged" || bad "after-hours denial changed the service"
@@ -149,7 +149,7 @@ if (( FAIL > 0 )); then
 fi
 if (( SKIP > 0 )); then
   echo "RESULT: PASSED WITH SKIPS -- ${SKIP} check(s) did NOT run (see SKIP lines above)."
-  echo "        The allowed-restart path is unverified. Rerun inside the business-hours window."
+  echo "        The allowed-restart path is unverified. Rerun during the 09:00-16:59 America/Chicago window."
   (( STRICT == 1 )) && { echo "        --strict: treating skips as failure."; exit 1; }
   exit 0
 fi

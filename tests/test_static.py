@@ -244,6 +244,31 @@ class OidcSeparationTests(unittest.TestCase):
         self.assertIn("<IDP_USER_DOMAIN>", (ROOT / "docs" / "oidc-login.md").read_text())
 
 
+class BusinessHoursChoicesTests(unittest.TestCase):
+    def test_three_choices_and_exact_simulator_command(self):
+        for name in ("README.md", "docs/demo-service.md"):
+            text = (ROOT / name).read_text()
+            self.assertIn("/opt/cedudo/venv/bin/python3 tools/cedudo-simulate.py restart-demo", text, name)
+            self.assertIn("--hour 10", text)
+            self.assertIn("Do not change the VM clock", text.replace("**", ""), name)
+        guide = (ROOT / "docs" / "demo-service.md").read_text()
+        for needle in ("### 1. Test now", "### 2. Simulate", "### 3. Run the real check",
+                       "Last resort: pin the clock", "disposable", "snapshot"):
+            self.assertIn(needle, guide)
+
+    def test_clock_commands_only_in_the_fenced_procedure(self):
+        guide = (ROOT / "docs" / "demo-service.md").read_text()
+        self.assertEqual(guide.count("timedatectl set-ntp false"), 1)
+        self.assertGreater(guide.index("timedatectl set-ntp false"),
+                           guide.index("### Last resort: pin the clock"))
+        for path in list(ROOT.glob("*.md")) + [ROOT / "docs" / "cedudo.md", ROOT / "docs" / "oidc-login.md"]:
+            self.assertNotIn("timedatectl set-ntp", path.read_text(), path.name)
+
+    def test_simulator_shebang_needs_explicit_venv_python(self):
+        first = (ROOT / "tools" / "cedudo-simulate.py").read_text().splitlines()[0]
+        self.assertEqual(first, "#!/usr/bin/env python3")
+
+
 class DemoProgramTests(unittest.TestCase):
     PROGRAM = ROOT / "demo-service" / "cedar-demo"
 

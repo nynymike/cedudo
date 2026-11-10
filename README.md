@@ -94,8 +94,8 @@ Limits to know about:
   startup journal entry) and verifies an after-hours denial instead. It still
   exits 0. Read its final `RESULT:` line: `PASSED (nothing skipped)` is the full
   result, `PASSED WITH SKIPS` means the allowed path is unverified. Add
-  `--strict` to make skips fail. To get a full run outside the window, the
-  administrator pins the clock (see [`docs/demo-service.md`](docs/demo-service.md)).
+  `--strict` to make skips fail. Changing the VM clock is not the routine fix;
+  see "Business hours: three ways to test" below.
 
 Run the first two now:
 
@@ -291,11 +291,36 @@ sudo ./tools/test-demo-service.sh
 Check the final `RESULT:` line. `PASSED WITH SKIPS` is not a full pass. Then
 try the same operations by hand:
 
-**Business hours:** the deployed `forbid-restart-outside-hours` policy denies
-every `restart` request when the `America/Chicago` hour is before 09:00 or at or
-after 17:00 (any day). `cedudo` reads the server clock; callers cannot override
-it. Run restart tests inside that window, or have the administrator set the VM
-clock (see `docs/demo-service.md`). Outputs below assume the window.
+#### Business hours: three ways to test
+
+The deployed `forbid-restart-outside-hours` policy denies every `restart`
+request when the `America/Chicago` hour is before 09:00 or at or after 17:00,
+on any day. It does not affect `read-logs`. `cedudo` reads the server clock;
+callers cannot override it, and the policy is not weakened for testing.
+**Do not change the VM clock as a routine workaround**, especially on a VM that
+also uses OIDC login or certificate validation. Choose one:
+
+| Choice | Use when | Proves |
+| --- | --- | --- |
+| 1. Test `read-logs` and the after-hours denial now | Any time | Install works; the forbid policy fires; a denied restart changes nothing |
+| 2. Explore an allowed daytime decision with the simulator | Any time | The policy *would* allow bob at 10:00 (no execution) |
+| 3. Run the real allowed-restart check in the window | 09:00 to 16:59 Central | A permitted restart really happens |
+
+Simulator command (use the venv interpreter, because the script's
+`#!/usr/bin/env python3` line would pick the system Python without
+`cedarling_python`):
+
+```bash
+/opt/cedudo/venv/bin/python3 tools/cedudo-simulate.py restart-demo \
+    --user bob --uid 1001 --gid 1001 --groups operators \
+    --hour 10 --day-of-week 2 --is-weekend false \
+    --policy-store /opt/cedudo/cedudo.cjar
+```
+
+Details, and a clearly fenced last-resort procedure for pinning the clock on an
+isolated, disposable VM only, are in
+[`docs/demo-service.md`](docs/demo-service.md). Outputs below that show a
+permitted restart assume choice 3 (inside the window).
 
 #### Switching to student identities
 
