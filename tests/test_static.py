@@ -223,6 +223,27 @@ class StudentIdentityTests(unittest.TestCase):
                         readme.index("### 9. Optional: passwords or SSH login"))
 
 
+class OidcSeparationTests(unittest.TestCase):
+    def test_oidc_moved_out_of_readme(self):
+        readme = (ROOT / "README.md").read_text()
+        oidc = (ROOT / "docs" / "oidc-login.md").read_text()
+        self.assertNotIn("authd", readme.replace("docs/oidc-login.md", "").replace("(Ubuntu authd)", ""))
+        self.assertIn("docs/oidc-login.md", readme)
+        self.assertIn("optional", readme.lower())
+        self.assertIn("not needed for the local `alice` and `bob`", readme)
+        self.assertLess(readme.index("## Troubleshooting"), readme.index("## Uninstallation"))
+        self.assertLess(readme.index("## Optional: OIDC login"), readme.index("## Troubleshooting"))
+        self.assertIn("## Groups and authorization", oidc)
+        self.assertIn("grants no Cedudo capability", oidc)
+        self.assertIn("`developers`", oidc)
+        self.assertIn("cedudo explain", oidc)
+
+    def test_no_idp_specific_names(self):
+        for path in (ROOT / "docs" / "oidc-login.md", ROOT / "README.md"):
+            self.assertNotIn("gluu", path.read_text().lower(), path.name)
+        self.assertIn("<IDP_USER_DOMAIN>", (ROOT / "docs" / "oidc-login.md").read_text())
+
+
 class DemoProgramTests(unittest.TestCase):
     PROGRAM = ROOT / "demo-service" / "cedar-demo"
 
