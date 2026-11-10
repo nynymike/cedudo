@@ -10,6 +10,7 @@ day. Cedudo is very restrictive by design, and is meant for demo purposes.
 - [`workshop-overview.md`](workshop-overview.md): the 80-minute student workshop and the restart exercise.
 - [`docs/demo-service.md`](docs/demo-service.md): administering the `cedar-demo` service (install, validate, business-hours testing, uninstall).
 - [`docs/cedudo.md`](docs/cedudo.md): how `cedudo` works, the authorization request, and writing policies.
+- [`docs/tools.md`](docs/tools.md): manual-page style reference for every command, script and program in this repository.
 - [`docs/oidc-login.md`](docs/oidc-login.md): optional OIDC login with authd.
 
 Sections below: supported environment, administrator prerequisites, install,

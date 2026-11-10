@@ -299,6 +299,40 @@ class ReadmeStructureTests(unittest.TestCase):
         self.assertIn("readlink /usr/local/bin/cedudo", uninstall)
 
 
+class ToolsReferenceTests(unittest.TestCase):
+    DOC = (ROOT / "docs" / "tools.md").read_text()
+
+    def test_every_tool_is_documented(self):
+        tools = [p.relative_to(ROOT).as_posix() for p in sorted((ROOT / "tools").iterdir())
+                 if p.is_file()]
+        tools += ["install-wrapper.sh", "cedudo-wrapper.c", "tests/test_static.py",
+                  "demo-service/cedar-demo"]
+        for tool in tools:
+            name = tool.split("/", 1)[-1] if tool.startswith("tools/") else tool
+            self.assertIn(name, self.DOC, f"{tool} missing from docs/tools.md")
+        self.assertRegex(self.DOC, r"(?m)^## cedudo$")
+
+    def test_documented_options_exist_in_scripts(self):
+        self.assertIn("--check", (ROOT / "tools" / "install-demo-service.sh").read_text())
+        self.assertIn("--strict", (ROOT / "tools" / "test-demo-service.sh").read_text())
+        sim = (ROOT / "tools" / "cedudo-simulate.py").read_text()
+        for flag in re.findall(r"`(--[a-z-]+)", self.DOC.split("## tools/cedudo-simulate.py")[1]
+                               .split("## tools/install-demo-service.sh")[0]):
+            if flag in ("--help",):
+                continue
+            self.assertIn(f'"{flag}"', sim, flag)
+
+    def test_documented_exit_codes_match_cedudo(self):
+        cedudo = load_cedudo()
+        for name, code in (("EX_USAGE", 64), ("EX_UNAVAILABLE", 69), ("EX_SOFTWARE", 70),
+                           ("EX_NOPERM", 77), ("EX_CONFIG", 78)):
+            self.assertEqual(getattr(cedudo, name), code)
+            self.assertRegex(self.DOC, rf"\| {code} \|")
+
+    def test_linked_from_readme(self):
+        self.assertIn("(docs/tools.md)", (ROOT / "README.md").read_text())
+
+
 class DemoProgramTests(unittest.TestCase):
     PROGRAM = ROOT / "demo-service" / "cedar-demo"
 

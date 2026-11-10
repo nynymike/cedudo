@@ -340,5 +340,6 @@ into `policy/store/policies/` and rebuild to try it:
 ## See also
 
 - The project `README.md` for installation and the workshop walkthrough.
+- [`tools.md`](tools.md) for a reference to every command and script.
 - [Cedar policy language](https://www.cedarpolicy.com/)
 - [Janssen Cedarling](https://docs.jans.io/stable/cedarling/)
